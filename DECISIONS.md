@@ -102,3 +102,34 @@ DISABLED`; risky actions default to `APPROVAL_REQUIRED`. Autonomous external
 communication is disabled until an org opts in.
 **Consequences:** Safer defaults; approval workflow is core infrastructure, not an
 afterthought.
+
+### ADR-0011 — AI Gateway is DB-free; usage is persisted by the API/service layer
+**Status:** Accepted (Phase 2)
+**Context:** The gateway must be trivially unit-testable and reusable from many call
+sites (endpoints, agents, workflows) without dragging a database session through it.
+**Decision:** `AIGateway` computes token usage and estimated cost and returns them on
+the normalized response, but performs no persistence. The API/service layer
+(`ai_usage_service`) writes `ai_usage_records` and owns the transaction.
+**Consequences:** Clean separation and fast tests; each caller is responsible for
+recording usage (endpoints do this on both success and failure paths).
+
+### ADR-0012 — Lazy provider SDK imports + injectable clients
+**Status:** Accepted (Phase 2)
+**Context:** Tests must never require a real API key or network, and importing the app
+shouldn't require every vendor SDK to be importable/configured.
+**Decision:** Provider adapters import their SDK lazily inside `_get_client()` and
+accept an injected client. Tests inject fakes; a `MockProvider` is the default in the
+test gateway. Vendor exceptions are mapped to a normalized error hierarchy.
+**Consequences:** Offline, deterministic tests; adding a provider is isolated to one
+adapter.
+
+### ADR-0013 — Cost is an estimate from a configurable pricing registry
+**Status:** Accepted (Phase 2)
+**Context:** Provider pricing changes over time and must not be hard-coded in business
+logic, nor presented as an actual invoice.
+**Decision:** A `PricingRegistry` keyed by `provider:model` (input/output price per 1M
+tokens, currency, effective date), overridable via `AI_PRICING_OVERRIDES_JSON`.
+Unknown models return `None` (never an invented price). All costs are labelled
+*estimated*.
+**Consequences:** Cost visibility without misrepresenting billing; prices are updated
+as data, not code.

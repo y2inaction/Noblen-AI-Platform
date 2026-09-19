@@ -32,10 +32,18 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 - [x] Tests: health, auth, RBAC, **tenant isolation**
 - [x] GitHub Actions CI (lint, type-check, test, build, docker build)
 
-## Phase 2 — AI Core ⬜
-- [ ] Provider abstraction + Anthropic + OpenAI providers
-- [ ] AI gateway (`generate/stream/embed/count_tokens/classify/extract/summarize`)
-- [ ] Usage & estimated-cost tracking, retries, timeouts, streaming, error handling
+## Phase 2 — AI Core ✅
+- [x] Provider abstraction (`AIProvider`) + Anthropic + OpenAI + mock providers
+- [x] AI gateway (`generate` / `stream` / `embed`) with provider & model selection
+- [x] Normalized request/response/stream types (no vendor objects leak out)
+- [x] Normalized error hierarchy + provider exception mapping
+- [x] Bounded retries with backoff, explicit timeouts
+- [x] Configurable model-pricing registry + estimated-cost tracking
+- [x] AI usage metering model, service, migration (tenant-scoped)
+- [x] AI API: `/ai/generate`, `/ai/stream` (SSE), `/ai/embed`, `/ai/usage`
+- [x] AI RBAC permissions + per-organization rate limiting
+- [x] Test suites (providers, gateway, usage, API, security) — no real API calls
+- [x] `docs/ai-core.md` + documentation updates
 
 ## Phase 3 — Agent Engine ⬜
 - [ ] Agents, versions, prompts, tool registry, permissions, conversations, memory

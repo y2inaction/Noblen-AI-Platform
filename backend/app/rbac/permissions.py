@@ -36,6 +36,12 @@ class Permission:
     AGENT_DELETE = "agent:delete"
     AGENT_RUN = "agent:run"
 
+    # AI Core (Phase 2)
+    AI_GENERATE = "ai:generate"
+    AI_STREAM = "ai:stream"
+    AI_EMBED = "ai:embed"
+    AI_VIEW_USAGE = "ai:view_usage"
+
     # Conversations / CRM / knowledge / workflows / tasks (used from later phases)
     CONVERSATION_VIEW = "conversation:view"
     LEAD_VIEW = "lead:view"
@@ -71,6 +77,9 @@ _MEMBER_PERMISSIONS = _VIEW_PERMISSIONS + [
     Permission.LEAD_MANAGE,
     Permission.TASK_MANAGE,
     Permission.KNOWLEDGE_MANAGE,
+    Permission.AI_GENERATE,
+    Permission.AI_STREAM,
+    Permission.AI_EMBED,
 ]
 
 # MANAGER: operational management (member work + team + agent/workflow authoring).
@@ -81,6 +90,7 @@ _MANAGER_PERMISSIONS = _MEMBER_PERMISSIONS + [
     Permission.AGENT_UPDATE,
     Permission.WORKFLOW_MANAGE,
     Permission.ANALYTICS_VIEW,
+    Permission.AI_VIEW_USAGE,
 ]
 
 # ADMIN: full organization administration.

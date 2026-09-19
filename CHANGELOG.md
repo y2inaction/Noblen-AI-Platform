@@ -6,6 +6,25 @@ and the project uses Conventional Commits.
 
 ## [Unreleased]
 
+### Added — Phase 2 (AI Core)
+- Provider-independent AI layer: `AIProvider` interface with Anthropic, OpenAI, and
+  offline mock adapters (vendor SDKs imported lazily; vendor objects never leak out).
+- `AIGateway` with provider/model selection, response/stream normalization, explicit
+  timeouts, bounded retries with backoff, structured logging, and request-id +
+  organization/user/agent/workflow attribution.
+- Normalized generation/embedding/stream types and a normalized AI error hierarchy
+  with provider-exception mapping.
+- Configurable model-pricing registry with clearly-labelled **estimated** cost (never
+  a provider invoice); overridable via `AI_PRICING_OVERRIDES_JSON`.
+- Tenant-scoped `ai_usage_records` model, usage service, and Alembic migration
+  (upgrade/downgrade/upgrade verified). Operational metadata only — no prompt content.
+- AI API: `POST /ai/generate`, `POST /ai/stream` (SSE), `POST /ai/embed`,
+  `GET /ai/usage`; new RBAC permissions (`ai:generate/stream/embed/view_usage`) and a
+  per-organization AI rate limit.
+- Test suites for providers, gateway, usage/cost, and the API (auth, RBAC, tenant
+  isolation, no-secrets-in-response) — no real API calls.
+- `docs/ai-core.md` and updates to architecture/roadmap/decisions docs.
+
 ### Added — Phase 0 (Discovery)
 - Repository discovery and runtime inventory.
 - `ARCHITECTURE.md`, `PROJECT_ROADMAP.md`, `DECISIONS.md`, `README.md`, `.gitignore`,

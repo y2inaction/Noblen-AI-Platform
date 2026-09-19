@@ -46,5 +46,16 @@ REST, versioned under `/api/v1`. Interactive OpenAPI docs are served at `/docs`
 | GET    | `/current/members`                | `member:view`         |
 | PATCH  | `/current/members/{id}/role`      | `member:update_role`  |
 
+### AI Core — `/api/v1/ai` (Phase 2)
+| Method | Path        | Permission        | Notes                              |
+|--------|-------------|-------------------|------------------------------------|
+| POST   | `/generate` | `ai:generate`     | Normalized single-shot generation  |
+| POST   | `/stream`   | `ai:stream`       | Server-Sent Events stream          |
+| POST   | `/embed`    | `ai:embed`        | Embeddings                         |
+| GET    | `/usage`    | `ai:view_usage`   | Tenant-scoped AI usage records     |
+
+See [`ai-core.md`](./ai-core.md) for request/response shapes, streaming event
+format, cost estimation, and error semantics.
+
 Endpoints for agents, conversations, knowledge, leads, workflows, tasks,
-integrations, billing, and usage are added in their respective phases.
+integrations, and billing are added in their respective phases.

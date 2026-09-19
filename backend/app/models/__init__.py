@@ -5,6 +5,7 @@ being imported here.
 """
 
 from app.db.base import Base
+from app.models.ai_usage import AIUsageRecord
 from app.models.audit import AuditLog
 from app.models.auth import (
     EmailVerificationToken,
@@ -19,6 +20,7 @@ from app.models.user import User
 
 __all__ = [
     "Base",
+    "AIUsageRecord",
     "AuditLog",
     "EmailVerificationToken",
     "PasswordResetToken",
