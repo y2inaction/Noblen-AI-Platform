@@ -1,0 +1,93 @@
+# Noblen AI Platform — development stack.
+# Isolated compose project so it never disturbs other apps on a shared host.
+name: noblen-ai-platform
+
+services:
+  postgres:
+    # pgvector image so embeddings (Phase 4) work without swapping the DB later.
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-noblen}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-noblen}
+      POSTGRES_DB: ${POSTGRES_DB:-noblen}
+    volumes:
+      - noblen_pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-noblen} -d ${POSTGRES_DB:-noblen}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - noblen
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - noblen_redisdata:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - noblen
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DEBUG: ${DEBUG:-true}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-noblen}:${POSTGRES_PASSWORD:-noblen}@postgres:5432/${POSTGRES_DB:-noblen}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:3000}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    networks:
+      - noblen
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    networks:
+      - noblen
+
+  nginx:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "8080:80"
+    networks:
+      - noblen
+
+volumes:
+  noblen_pgdata:
+  noblen_redisdata:
+
+networks:
+  noblen:
+    name: noblen-network
