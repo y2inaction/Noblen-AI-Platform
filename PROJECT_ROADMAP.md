@@ -45,8 +45,22 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 - [x] Test suites (providers, gateway, usage, API, security) — no real API calls
 - [x] `docs/ai-core.md` + documentation updates
 
-## Phase 3 — Agent Engine ⬜
-- [ ] Agents, versions, prompts, tool registry, permissions, conversations, memory
+## Phase 3 — Agent Engine ✅
+- [x] Agent registry: CRUD, slug uniqueness, server-enforced lifecycle state machine
+- [x] Immutable agent versioning + active-version resolution
+- [x] Agent Runtime: bounded generate→tool loop over the Phase 2 AI Gateway
+- [x] Normalized tool-calling added to the AI Core (Anthropic/OpenAI/mock, additive)
+- [x] Secure tool registry + sandboxed execution contract + safe built-in tools
+- [x] Tool permission modes (AUTO / APPROVAL_REQUIRED / DISABLED), server-enforced
+- [x] Conversations, messages (operational only), participants — tenant-scoped
+- [x] Scoped memory modes (NONE / CONVERSATION / PERSISTENT), bounded
+- [x] Human-in-the-loop approval subsystem (state machine + resume)
+- [x] Agent RBAC permissions + per-org runtime guardrails
+- [x] API: agents, versions, execute, conversations, tools, approvals
+- [x] Usage attribution extended with agent/version/conversation (non-breaking)
+- [x] Alembic migration (upgrade/downgrade/upgrade verified)
+- [x] Test suites (registry, runtime, API, approvals, tenant isolation) — no real API calls
+- [x] Minimal internal Agent Playground page + documentation
 
 ## Phase 4 — Knowledge ⬜
 - [ ] Upload → extract → clean → chunk → embed (pgvector) → retrieve → cite

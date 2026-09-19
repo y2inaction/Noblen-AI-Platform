@@ -57,5 +57,40 @@ REST, versioned under `/api/v1`. Interactive OpenAPI docs are served at `/docs`
 See [`ai-core.md`](./ai-core.md) for request/response shapes, streaming event
 format, cost estimation, and error semantics.
 
-Endpoints for agents, conversations, knowledge, leads, workflows, tasks,
-integrations, and billing are added in their respective phases.
+### Agents — `/api/v1/agents` (Phase 3)
+| Method | Path | Permission |
+|--------|------|------------|
+| POST | `/agents` | `agent:create` |
+| GET | `/agents` · `/agents/{id}` | `agent:view` |
+| PATCH | `/agents/{id}` | `agent:update` |
+| DELETE | `/agents/{id}` (archive) | `agent:delete` |
+| POST | `/agents/{id}/activate` · `/pause` · `/archive` | `agent:update` |
+| POST/GET | `/agents/{id}/versions` (+ `/{version_id}`) | `agent:manage_versions` / `agent:view` |
+| POST | `/agents/{id}/versions/{version_id}/activate` | `agent:manage_versions` |
+| POST | `/agents/{id}/execute` | `agent:run` |
+
+### Conversations — `/api/v1/conversations` (Phase 3)
+| Method | Path | Permission |
+|--------|------|------------|
+| POST | `/conversations` | `conversation:create` |
+| GET | `/conversations` · `/{id}` · `/{id}/messages` | `conversation:view` |
+| POST | `/conversations/{id}/messages` | `conversation:write` |
+
+### Tools — `/api/v1` (Phase 3)
+| Method | Path | Permission |
+|--------|------|------------|
+| GET | `/tools` · `/tools/{id}` | `tool:view` |
+| GET | `/agents/{id}/tools` | `agent:view` |
+| POST/DELETE | `/agents/{id}/tools` (bind/unbind) | `tool:manage` |
+
+### Approvals — `/api/v1/approvals` (Phase 3)
+| Method | Path | Permission |
+|--------|------|------------|
+| GET | `/approvals` · `/approvals/{id}` | `agent:approve_actions` |
+| POST | `/approvals/{id}/approve` · `/reject` | `agent:approve_actions` |
+
+Agent execution returns a normalized result whose `status` is `completed` or
+`awaiting_approval` (see [`agents.md`](./agents.md)).
+
+Endpoints for knowledge, leads, workflows, integrations, and billing are added in
+their respective phases.
