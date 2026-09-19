@@ -6,6 +6,7 @@ real API.
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -25,6 +26,7 @@ from app.ai.types import (
     GenerationResponse,
     StreamChunk,
     StreamEventType,
+    ToolCall,
 )
 
 
@@ -52,14 +54,55 @@ class OpenAIProvider(AIProvider):
         return self._client
 
     @staticmethod
-    def _to_messages(request: GenerationRequest) -> list[dict[str, str]]:
-        messages: list[dict[str, str]] = []
+    def _to_messages(request: GenerationRequest) -> list[dict[str, Any]]:
+        messages: list[dict[str, Any]] = []
         if request.system:
             messages.append({"role": "system", "content": request.system})
         for msg in request.messages:
-            role = msg.role if msg.role in ("system", "user", "assistant") else "user"
-            messages.append({"role": role, "content": msg.content})
+            if msg.role == "assistant" and msg.tool_calls:
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": msg.content or None,
+                        "tool_calls": [
+                            {
+                                "id": tc.id,
+                                "type": "function",
+                                "function": {
+                                    "name": tc.name,
+                                    "arguments": json.dumps(tc.arguments),
+                                },
+                            }
+                            for tc in msg.tool_calls
+                        ],
+                    }
+                )
+            elif msg.role == "tool":
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": msg.tool_call_id or "",
+                        "content": msg.content,
+                    }
+                )
+            else:
+                role = msg.role if msg.role in ("system", "user", "assistant") else "user"
+                messages.append({"role": role, "content": msg.content})
         return messages
+
+    @staticmethod
+    def _to_tools(request: GenerationRequest) -> list[dict[str, Any]]:
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.input_schema or {"type": "object", "properties": {}},
+                },
+            }
+            for t in request.tools
+        ]
 
     def _map_error(self, exc: Exception) -> Exception:
         try:
@@ -97,6 +140,8 @@ class OpenAIProvider(AIProvider):
         }
         if request.max_output_tokens:
             kwargs["max_tokens"] = request.max_output_tokens
+        if request.tools:
+            kwargs["tools"] = self._to_tools(request)
         try:
             resp = await client.chat.completions.create(**kwargs)
         except Exception as exc:  # noqa: BLE001
@@ -104,6 +149,16 @@ class OpenAIProvider(AIProvider):
 
         choice = resp.choices[0]
         usage = getattr(resp, "usage", None)
+        tool_calls: list[ToolCall] = []
+        for raw in getattr(choice.message, "tool_calls", None) or []:
+            fn = getattr(raw, "function", None)
+            try:
+                args = json.loads(getattr(fn, "arguments", "") or "{}")
+            except json.JSONDecodeError:
+                args = {}
+            tool_calls.append(
+                ToolCall(id=getattr(raw, "id", ""), name=getattr(fn, "name", ""), arguments=args)
+            )
         return GenerationResponse(
             content=getattr(choice.message, "content", "") or "",
             provider=self.name,
@@ -113,6 +168,7 @@ class OpenAIProvider(AIProvider):
             total_tokens=getattr(usage, "total_tokens", 0) or 0,
             request_id="",
             finish_reason=getattr(choice, "finish_reason", None),
+            tool_calls=tool_calls,
         )
 
     async def stream(  # type: ignore[override]

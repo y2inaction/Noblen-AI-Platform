@@ -133,3 +133,40 @@ Unknown models return `None` (never an invented price). All costs are labelled
 *estimated*.
 **Consequences:** Cost visibility without misrepresenting billing; prices are updated
 as data, not code.
+
+### ADR-0014 — Agents are mutable handles; versions are immutable snapshots
+**Status:** Accepted (Phase 3)
+**Context:** A production agent must not change behavior because someone edited its
+prompt; but authors need to iterate.
+**Decision:** `Agent` holds the editable draft config + an `active_version_id` pointer.
+Runnable config lives in immutable `AgentVersion` rows (unique `version_number` per
+agent). Editing means: update the draft → create a new version → activate it. There is
+no version-edit path; activating a new version archives the previous one. The runtime
+resolves the active version server-side (or an explicit test version).
+**Consequences:** Safe production behavior with full history; slightly more ceremony to
+ship a change (cut + activate a version), which is the intended safeguard.
+
+### ADR-0015 — Normalized tool-calling in the gateway; server-side permission + approvals
+**Status:** Accepted (Phase 3)
+**Context:** Agents need controlled capabilities, but a model-generated tool call must
+never be trusted to authorize itself, and the runtime must stay provider-agnostic.
+**Decision:** Tool-calling is expressed with normalized `ToolSpec`/`ToolCall` types in
+the AI Core (each provider adapter translates to/from its native shape; the mock drives
+it deterministically for tests). Only handlers in an in-code registry can run; each is
+bound to an agent with a permission mode (`AUTO`/`APPROVAL_REQUIRED`/`DISABLED`) enforced
+by the runtime, not the model. `APPROVAL_REQUIRED` creates a human approval and stops;
+approval resumes the loop. Tools receive only a sandboxed `ToolContext` — never the DB,
+env, secrets, filesystem, or OS.
+**Consequences:** Safe, auditable tool use that generalizes across providers and future
+tools; the tool loop is fully testable offline via the mock provider.
+
+### ADR-0016 — Runtime is gateway-injected and bounded
+**Status:** Accepted (Phase 3)
+**Context:** The runtime must be testable without real providers and must never run
+unbounded on a misbehaving/malicious agent.
+**Decision:** `AgentRuntime` takes an injected `AIGateway` (tests inject a mock-backed
+one) and enforces configurable limits (`AGENT_MAX_ITERATIONS`, `AGENT_MAX_TOOL_CALLS`,
+`AGENT_MAX_RUNTIME_SECONDS`) plus bounded memory. Usage is recorded through the Phase 2
+service, extended (additively) with agent/version/conversation attribution.
+**Consequences:** Deterministic tests and safe-by-default execution; limits are tunable
+per environment.

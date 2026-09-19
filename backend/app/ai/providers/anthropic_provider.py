@@ -23,6 +23,7 @@ from app.ai.types import (
     GenerationResponse,
     StreamChunk,
     StreamEventType,
+    ToolCall,
 )
 
 _DEFAULT_MAX_TOKENS = 1024
@@ -51,20 +52,52 @@ class AnthropicProvider(AIProvider):
         return self._client
 
     @staticmethod
-    def _split_messages(request: GenerationRequest) -> tuple[str | None, list[dict[str, str]]]:
+    def _split_messages(request: GenerationRequest) -> tuple[str | None, list[dict[str, Any]]]:
         system_parts: list[str] = []
         if request.system:
             system_parts.append(request.system)
-        messages: list[dict[str, str]] = []
+        messages: list[dict[str, Any]] = []
         for msg in request.messages:
             if msg.role == "system":
                 system_parts.append(msg.content)
+            elif msg.role == "assistant" and msg.tool_calls:
+                blocks: list[dict[str, Any]] = []
+                if msg.content:
+                    blocks.append({"type": "text", "text": msg.content})
+                blocks.extend(
+                    {"type": "tool_use", "id": tc.id, "name": tc.name, "input": tc.arguments}
+                    for tc in msg.tool_calls
+                )
+                messages.append({"role": "assistant", "content": blocks})
+            elif msg.role == "tool":
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": msg.tool_call_id or "",
+                                "content": msg.content,
+                            }
+                        ],
+                    }
+                )
             else:
-                # Anthropic supports user/assistant; map tool -> user for now.
                 role = "assistant" if msg.role == "assistant" else "user"
                 messages.append({"role": role, "content": msg.content})
         system = "\n\n".join(system_parts) if system_parts else None
         return system, messages
+
+    @staticmethod
+    def _to_tools(request: GenerationRequest) -> list[dict[str, Any]]:
+        return [
+            {
+                "name": t.name,
+                "description": t.description,
+                "input_schema": t.input_schema or {"type": "object", "properties": {}},
+            }
+            for t in request.tools
+        ]
 
     def _map_error(self, exc: Exception) -> Exception:
         try:
@@ -104,15 +137,30 @@ class AnthropicProvider(AIProvider):
         }
         if system:
             kwargs["system"] = system
+        if request.tools:
+            kwargs["tools"] = self._to_tools(request)
         try:
             resp = await client.messages.create(**kwargs)
         except Exception as exc:  # noqa: BLE001 - mapped to normalized errors
             raise self._map_error(exc) from exc
 
-        text = "".join(getattr(block, "text", "") for block in getattr(resp, "content", []) or [])
+        text_parts: list[str] = []
+        tool_calls: list[ToolCall] = []
+        for block in getattr(resp, "content", []) or []:
+            btype = getattr(block, "type", None)
+            if btype == "tool_use":
+                tool_calls.append(
+                    ToolCall(
+                        id=getattr(block, "id", ""),
+                        name=getattr(block, "name", ""),
+                        arguments=getattr(block, "input", {}) or {},
+                    )
+                )
+            else:
+                text_parts.append(getattr(block, "text", "") or "")
         usage = getattr(resp, "usage", None)
         return GenerationResponse(
-            content=text,
+            content="".join(text_parts),
             provider=self.name,
             model=model,
             input_tokens=getattr(usage, "input_tokens", 0) or 0,
@@ -121,6 +169,7 @@ class AnthropicProvider(AIProvider):
             + (getattr(usage, "output_tokens", 0) or 0),
             request_id="",
             finish_reason=getattr(resp, "stop_reason", None),
+            tool_calls=tool_calls,
         )
 
     async def stream(  # type: ignore[override]

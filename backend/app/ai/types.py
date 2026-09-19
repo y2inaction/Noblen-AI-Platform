@@ -16,9 +16,30 @@ from pydantic import BaseModel, ConfigDict, Field
 MessageRole = Literal["system", "user", "assistant", "tool"]
 
 
+class ToolSpec(BaseModel):
+    """A normalized tool definition passed to a provider for tool-calling."""
+
+    name: str
+    description: str = ""
+    input_schema: dict[str, Any] = Field(default_factory=dict)
+
+
+class ToolCall(BaseModel):
+    """A normalized tool-call request emitted by the model."""
+
+    id: str
+    name: str
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+
 class Message(BaseModel):
     role: MessageRole
-    content: str
+    content: str = ""
+    # For assistant messages that requested tools:
+    tool_calls: list[ToolCall] | None = None
+    # For tool-result messages (role == "tool"):
+    tool_call_id: str | None = None
+    name: str | None = None
 
 
 class GenerationRequest(BaseModel):
@@ -39,10 +60,15 @@ class GenerationRequest(BaseModel):
     stream: bool = False
     metadata: dict[str, Any] = Field(default_factory=dict)
 
-    # Attribution (set by the gateway/endpoint, not by the client).
+    # Tool-calling (empty list = plain generation, identical to Phase 2 behavior).
+    tools: list[ToolSpec] = Field(default_factory=list)
+
+    # Attribution (set by the gateway/endpoint/runtime, not by the client).
     organization_id: uuid.UUID | None = None
     user_id: uuid.UUID | None = None
     agent_id: uuid.UUID | None = None
+    agent_version_id: uuid.UUID | None = None
+    conversation_id: uuid.UUID | None = None
     workflow_id: uuid.UUID | None = None
 
 
@@ -80,6 +106,8 @@ class GenerationResponse(BaseModel):
     estimated_cost_currency: str = "USD"
     request_id: str
     finish_reason: str | None = None
+    # Present when the model requested tool execution (finish_reason == "tool_use").
+    tool_calls: list[ToolCall] = Field(default_factory=list)
     latency_ms: int = 0
     metadata: dict[str, Any] = Field(default_factory=dict)
 

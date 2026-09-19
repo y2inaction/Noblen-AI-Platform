@@ -24,6 +24,8 @@ class AIUsageRecord(UUIDMixin, TimestampMixin, TenantMixin, Base):
         Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     agent_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
+    agent_version_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
     workflow_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
 
     provider: Mapped[str] = mapped_column(String(64), nullable=False, index=True)

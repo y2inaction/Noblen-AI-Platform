@@ -21,12 +21,16 @@ async def record_generation(
     response: GenerationResponse,
     operation: str = "generate",
     agent_id: uuid.UUID | None = None,
+    agent_version_id: uuid.UUID | None = None,
+    conversation_id: uuid.UUID | None = None,
     workflow_id: uuid.UUID | None = None,
 ) -> AIUsageRecord:
     record = AIUsageRecord(
         organization_id=organization_id,
         user_id=user_id,
         agent_id=agent_id,
+        agent_version_id=agent_version_id,
+        conversation_id=conversation_id,
         workflow_id=workflow_id,
         provider=response.provider,
         model=response.model,

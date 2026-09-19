@@ -75,6 +75,19 @@ class Settings(BaseSettings):
     # Example: {"openai:gpt-4o-mini": {"input_per_million": 0.15, "output_per_million": 0.6}}
     AI_PRICING_OVERRIDES_JSON: str | None = None
 
+    # ---- Agent Engine (Phase 3) ----
+    # Runtime guardrails against runaway/abusive agent execution.
+    AGENT_MAX_ITERATIONS: int = 6
+    AGENT_MAX_TOOL_CALLS: int = 10
+    AGENT_MAX_RUNTIME_SECONDS: float = 120.0
+    # Upper bound on how many prior messages CONVERSATION memory may load.
+    AGENT_MEMORY_MAX_MESSAGES: int = 50
+    # How long a pending approval stays actionable before it expires.
+    AGENT_APPROVAL_TTL_SECONDS: int = 86400
+    # Configuration/input size limits.
+    AGENT_MAX_SYSTEM_INSTRUCTIONS_CHARS: int = 20000
+    AGENT_MAX_INPUT_CHARS: int = 20000
+
     # ---- Localisation defaults (per-org configurable at runtime) ----
     DEFAULT_CURRENCY: str = "NGN"
     DEFAULT_TIMEZONE: str = "Africa/Lagos"

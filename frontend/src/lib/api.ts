@@ -67,3 +67,52 @@ export function register(
     body: JSON.stringify({ email, password, organization_name, full_name }),
   });
 }
+
+export interface AgentSummary {
+  id: string;
+  name: string;
+  status: string;
+  agent_type: string;
+}
+
+export interface ExecutionResult {
+  status: "completed" | "awaiting_approval" | string;
+  conversation_id: string;
+  agent_id: string;
+  agent_version_id: string;
+  message: { id: string; role: string; content: string } | null;
+  approval_id: string | null;
+  tool_name: string | null;
+  usage: Record<string, unknown>;
+}
+
+function authHeaders(token: string): Record<string, string> {
+  return { Authorization: `Bearer ${token}` };
+}
+
+export async function listAgents(token: string): Promise<AgentSummary[]> {
+  const body = await request<{ items: AgentSummary[] }>("/api/v1/agents", {
+    headers: authHeaders(token),
+  });
+  return body.items;
+}
+
+export function executeAgent(
+  token: string,
+  agentId: string,
+  message: string,
+  conversationId?: string,
+): Promise<ExecutionResult> {
+  return request<ExecutionResult>(`/api/v1/agents/${agentId}/execute`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ message, conversation_id: conversationId ?? null }),
+  });
+}
+
+export function approveAction(token: string, approvalId: string): Promise<unknown> {
+  return request(`/api/v1/approvals/${approvalId}/approve`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+}
