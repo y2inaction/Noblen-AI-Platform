@@ -48,11 +48,32 @@ class Settings(BaseSettings):
     RATE_LIMIT_REQUESTS: int = 100
     RATE_LIMIT_WINDOW_SECONDS: int = 60
 
-    # ---- AI providers (Phase 2) ----
+    # ---- AI Core (Phase 2) ----
+    # Provider secrets — backend only, never exposed to the frontend.
     ANTHROPIC_API_KEY: str | None = None
     OPENAI_API_KEY: str | None = None
-    DEFAULT_AI_PROVIDER: str = "anthropic"
-    DEFAULT_AI_MODEL: str = "claude-sonnet-4-5"
+
+    # Default provider/model selection (never hard-code model names in logic).
+    AI_DEFAULT_PROVIDER: str = "anthropic"
+    AI_DEFAULT_MODEL: str = "claude-sonnet-4-5"
+    AI_DEFAULT_EMBEDDING_PROVIDER: str = "openai"
+    AI_DEFAULT_EMBEDDING_MODEL: str = "text-embedding-3-small"
+
+    # Resilience.
+    AI_REQUEST_TIMEOUT_SECONDS: float = 60.0
+    AI_MAX_RETRIES: int = 2
+    AI_RETRY_BASE_DELAY_SECONDS: float = 0.5
+
+    # Per-organization AI rate limiting (a safe platform default; per-plan later).
+    AI_RATE_LIMIT_REQUESTS: int = 60
+    AI_RATE_LIMIT_WINDOW_SECONDS: int = 60
+
+    # Privacy: never persist/log full prompts or responses unless explicitly enabled.
+    AI_LOG_PROMPTS: bool = False
+
+    # Optional JSON override for the model-pricing registry (see app/ai/pricing.py).
+    # Example: {"openai:gpt-4o-mini": {"input_per_million": 0.15, "output_per_million": 0.6}}
+    AI_PRICING_OVERRIDES_JSON: str | None = None
 
     # ---- Localisation defaults (per-org configurable at runtime) ----
     DEFAULT_CURRENCY: str = "NGN"
