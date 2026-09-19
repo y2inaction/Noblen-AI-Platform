@@ -37,6 +37,21 @@ async def lifespan(_app: FastAPI):
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         logger.info("startup_sqlite_schema_created")
+
+    # Seed the built-in tool catalogue (idempotent). Tables exist by now (created
+    # above for SQLite dev, or via Alembic migrations in production).
+    try:
+        from app.agents.tools.seed import seed_builtin_tools
+        from app.db.session import SessionLocal
+
+        async with SessionLocal() as session:
+            added = await seed_builtin_tools(session)
+            await session.commit()
+        if added:
+            logger.info("startup_tools_seeded", added=added)
+    except Exception:  # noqa: BLE001 - never block startup on seeding
+        logger.warning("startup_tool_seed_skipped")
+
     logger.info("startup", environment=settings.ENVIRONMENT, version=__version__)
     yield
     await engine.dispose()
