@@ -34,7 +34,17 @@ class Permission:
     AGENT_CREATE = "agent:create"
     AGENT_UPDATE = "agent:update"
     AGENT_DELETE = "agent:delete"
-    AGENT_RUN = "agent:run"
+    AGENT_RUN = "agent:run"  # execute
+    AGENT_MANAGE_VERSIONS = "agent:manage_versions"
+    AGENT_APPROVE_ACTIONS = "agent:approve_actions"
+
+    # Conversations (Phase 3)
+    CONVERSATION_CREATE = "conversation:create"
+    CONVERSATION_WRITE = "conversation:write"
+
+    # Tools (Phase 3)
+    TOOL_VIEW = "tool:view"
+    TOOL_MANAGE = "tool:manage"
 
     # AI Core (Phase 2)
     AI_GENERATE = "ai:generate"
@@ -80,6 +90,8 @@ _MEMBER_PERMISSIONS = _VIEW_PERMISSIONS + [
     Permission.AI_GENERATE,
     Permission.AI_STREAM,
     Permission.AI_EMBED,
+    Permission.CONVERSATION_CREATE,
+    Permission.CONVERSATION_WRITE,
 ]
 
 # MANAGER: operational management (member work + team + agent/workflow authoring).
@@ -88,6 +100,9 @@ _MANAGER_PERMISSIONS = _MEMBER_PERMISSIONS + [
     Permission.MEMBER_INVITE,
     Permission.AGENT_CREATE,
     Permission.AGENT_UPDATE,
+    Permission.AGENT_MANAGE_VERSIONS,
+    Permission.AGENT_APPROVE_ACTIONS,
+    Permission.TOOL_MANAGE,
     Permission.WORKFLOW_MANAGE,
     Permission.ANALYTICS_VIEW,
     Permission.AI_VIEW_USAGE,
