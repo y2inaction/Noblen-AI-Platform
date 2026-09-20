@@ -170,3 +170,31 @@ one) and enforces configurable limits (`AGENT_MAX_ITERATIONS`, `AGENT_MAX_TOOL_C
 service, extended (additively) with agent/version/conversation attribution.
 **Consequences:** Deterministic tests and safe-by-default execution; limits are tunable
 per environment.
+
+### ADR-0017 — pgvector is the single production vector store; portable column type
+**Status:** Accepted (Phase 4)
+**Context:** RAG needs vector similarity. The prior phases test on SQLite, but vector
+search must run natively in the production database — not emulated in Python, and not a
+second datastore.
+**Decision:** PostgreSQL + pgvector only (no FAISS/Chroma/Pinecone/Weaviate/Qdrant/
+Milvus, no JSON/Python similarity for production). The embedding column uses a custom
+`EmbeddingVector` type that renders as `vector(dim)` on PostgreSQL and JSON on SQLite,
+so the shared metadata's `create_all` still works for non-knowledge SQLite suites while
+Knowledge/RAG tests run against a real PostgreSQL+pgvector service (local + CI). Cosine
+similarity uses the `<=>` operator with an HNSW index; queries are tenant-scoped in SQL.
+**Consequences:** Production-faithful retrieval and a CI Postgres service; a documented
+SQLite/Postgres seam for the vector column, closed by the pg-backed knowledge tests.
+
+### ADR-0018 — Fixed embedding dimension; RAG reaches the model only as tool data
+**Status:** Accepted (Phase 4)
+**Context:** Mixing embedding dimensions corrupts a vector index, and retrieved
+documents are untrusted content that must not act as instructions.
+**Decision:** The vector column is fixed platform-wide at `KNOWLEDGE_EMBEDDING_DIMENSION`
+(default 1536); ingestion rejects any embedding of another dimension rather than
+silently inserting it. RAG is delivered through the `search_knowledge` tool: the runtime
+(not the model) resolves the agent's authorized knowledge bases from
+`agent_knowledge_sources`, and retrieved passages return as tool results explicitly
+labelled untrusted — they can never modify permissions, tool authorization, or security
+policy.
+**Consequences:** A consistent index and a clean prompt-injection boundary; changing the
+embedding model/dimension is an explicit, handled migration rather than a silent break.
