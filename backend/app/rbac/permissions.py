@@ -58,6 +58,13 @@ class Permission:
     LEAD_MANAGE = "lead:manage"
     KNOWLEDGE_VIEW = "knowledge:view"
     KNOWLEDGE_MANAGE = "knowledge:manage"
+    # Knowledge + RAG (Phase 4) — granular
+    KNOWLEDGE_CREATE = "knowledge:create"
+    KNOWLEDGE_UPDATE = "knowledge:update"
+    KNOWLEDGE_DELETE = "knowledge:delete"
+    KNOWLEDGE_INGEST = "knowledge:ingest"
+    KNOWLEDGE_SEARCH = "knowledge:search"
+    KNOWLEDGE_MANAGE_SOURCES = "knowledge:manage_sources"
     WORKFLOW_VIEW = "workflow:view"
     WORKFLOW_MANAGE = "workflow:manage"
     TASK_VIEW = "task:view"
@@ -92,6 +99,7 @@ _MEMBER_PERMISSIONS = _VIEW_PERMISSIONS + [
     Permission.AI_EMBED,
     Permission.CONVERSATION_CREATE,
     Permission.CONVERSATION_WRITE,
+    Permission.KNOWLEDGE_SEARCH,
 ]
 
 # MANAGER: operational management (member work + team + agent/workflow authoring).
@@ -106,6 +114,10 @@ _MANAGER_PERMISSIONS = _MEMBER_PERMISSIONS + [
     Permission.WORKFLOW_MANAGE,
     Permission.ANALYTICS_VIEW,
     Permission.AI_VIEW_USAGE,
+    Permission.KNOWLEDGE_CREATE,
+    Permission.KNOWLEDGE_UPDATE,
+    Permission.KNOWLEDGE_INGEST,
+    Permission.KNOWLEDGE_MANAGE_SOURCES,
 ]
 
 # ADMIN: full organization administration.
@@ -118,6 +130,7 @@ _ADMIN_PERMISSIONS = _MANAGER_PERMISSIONS + [
     Permission.AGENT_DELETE,
     Permission.AUDIT_VIEW,
     Permission.SETTINGS_MANAGE,
+    Permission.KNOWLEDGE_DELETE,
 ]
 
 # Default role -> permission-code mapping. SUPER_ADMIN gets the wildcard.

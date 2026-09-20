@@ -80,4 +80,25 @@ class ApprovalStatus(str, enum.Enum):
     EXPIRED = "EXPIRED"
 
 
+# ---- Knowledge + RAG (Phase 4) ----
+class KnowledgeBaseStatus(str, enum.Enum):
+    ACTIVE = "ACTIVE"
+    PAUSED = "PAUSED"
+    ARCHIVED = "ARCHIVED"
+
+
+class DocumentSourceType(str, enum.Enum):
+    UPLOAD = "UPLOAD"
+    TEXT = "TEXT"
+    URL = "URL"  # accepted for forward-compat; ingestion not implemented in Phase 4
+
+
+class DocumentStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    READY = "READY"
+    FAILED = "FAILED"
+    ARCHIVED = "ARCHIVED"
+
+
 # ruff: noqa: UP042  (str+Enum kept intentionally for JSON/DB value compatibility)

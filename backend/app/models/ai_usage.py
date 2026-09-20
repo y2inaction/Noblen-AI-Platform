@@ -27,6 +27,9 @@ class AIUsageRecord(UUIDMixin, TimestampMixin, TenantMixin, Base):
     agent_version_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
     conversation_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
     workflow_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
+    # Knowledge attribution (Phase 4) — embeddings generated during ingestion/search.
+    knowledge_base_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
+    document_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
 
     provider: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     model: Mapped[str] = mapped_column(String(128), nullable=False, index=True)

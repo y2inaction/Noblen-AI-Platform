@@ -55,6 +55,8 @@ async def record_embedding(
     organization_id: uuid.UUID,
     user_id: uuid.UUID | None,
     response: EmbeddingResponse,
+    knowledge_base_id: uuid.UUID | None = None,
+    document_id: uuid.UUID | None = None,
 ) -> AIUsageRecord:
     record = AIUsageRecord(
         organization_id=organization_id,
@@ -70,6 +72,8 @@ async def record_embedding(
         estimated_cost_currency=response.estimated_cost_currency,
         latency_ms=response.latency_ms,
         status="success",
+        knowledge_base_id=knowledge_base_id,
+        document_id=document_id,
     )
     db.add(record)
     await db.flush()

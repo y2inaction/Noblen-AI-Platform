@@ -88,6 +88,29 @@ class Settings(BaseSettings):
     AGENT_MAX_SYSTEM_INSTRUCTIONS_CHARS: int = 20000
     AGENT_MAX_INPUT_CHARS: int = 20000
 
+    # ---- Knowledge + RAG (Phase 4) ----
+    # Embedding model config. The vector column dimension is fixed platform-wide
+    # (KNOWLEDGE_EMBEDDING_DIMENSION) and must match the configured model.
+    KNOWLEDGE_EMBEDDING_PROVIDER: str = "openai"
+    KNOWLEDGE_EMBEDDING_MODEL: str = "text-embedding-3-small"
+    KNOWLEDGE_EMBEDDING_DIMENSION: int = 1536
+    # Ingestion limits (guard memory + cost).
+    MAX_DOCUMENT_SIZE_MB: int = 20
+    MAX_DOCUMENT_TEXT_LENGTH: int = 2_000_000
+    MAX_CHUNKS_PER_DOCUMENT: int = 1000
+    # Chunking (character-based, paragraph-aware).
+    KNOWLEDGE_CHUNK_SIZE: int = 1200
+    KNOWLEDGE_CHUNK_OVERLAP: int = 150
+    # Retrieval.
+    KNOWLEDGE_DEFAULT_TOP_K: int = 5
+    KNOWLEDGE_MAX_TOP_K: int = 20
+    # Minimum cosine similarity (0..1) for a chunk to be returned.
+    KNOWLEDGE_DEFAULT_SIMILARITY_THRESHOLD: float = 0.0
+    # Local document storage root (dev/test); swap for object storage in prod.
+    KNOWLEDGE_STORAGE_DIR: str = "./storage/knowledge"
+    # Privacy: never log document content by default.
+    KNOWLEDGE_LOG_CONTENT: bool = False
+
     # ---- Localisation defaults (per-org configurable at runtime) ----
     DEFAULT_CURRENCY: str = "NGN"
     DEFAULT_TIMEZONE: str = "Africa/Lagos"

@@ -57,7 +57,14 @@ class Agent(UUIDMixin, TimestampMixin, TenantMixin, Base):
     agent_metadata: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     active_version_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("agent_versions.id", ondelete="SET NULL", use_alter=True), nullable=True
+        Uuid,
+        ForeignKey(
+            "agent_versions.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_agents_active_version_id",
+        ),
+        nullable=True,
     )
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
