@@ -10,6 +10,7 @@ from app.api.v1 import (
     approvals,
     auth,
     conversations,
+    knowledge,
     organizations,
     tools,
     users,
@@ -24,3 +25,4 @@ api_router.include_router(agents.router)
 api_router.include_router(conversations.router)
 api_router.include_router(tools.router)
 api_router.include_router(approvals.router)
+api_router.include_router(knowledge.router)
