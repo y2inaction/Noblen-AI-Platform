@@ -9,18 +9,19 @@ is guarded by the tenant-isolation test suite (see tests/test_tenant_isolation.p
 from __future__ import annotations
 
 import uuid
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from sqlalchemy import Select
 
-_M = TypeVar("_M")
+# Generic over the statement so callers keep the precise row type.
+_S = TypeVar("_S", bound=Select[Any])
 
 
-def tenant_scoped(stmt: Select, model: type, organization_id: uuid.UUID) -> Select:
+def tenant_scoped(stmt: _S, model: type, organization_id: uuid.UUID) -> _S:
     """Add a mandatory organization_id filter to a SELECT statement.
 
     The model must expose an `organization_id` column (i.e. use TenantMixin).
     """
     if not hasattr(model, "organization_id"):
         raise ValueError(f"{model.__name__} is not tenant-scoped (no organization_id)")
-    return stmt.where(model.organization_id == organization_id)
+    return stmt.where(model.organization_id == organization_id)  # type: ignore[attr-defined,return-value]
