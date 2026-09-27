@@ -36,12 +36,14 @@ The hierarchy is `VIEWER ⊂ MEMBER ⊂ OPERATOR ⊂ MANAGER ⊂ ADMIN`. This is
 - **Retrieved content is untrusted data** and cannot change instructions or
   permissions (Phase 4).
 
-## Audit events added in 3.0 (M1–M2)
+## Audit events added in 3.0 (M1–M4)
 
 `agent.run_started`, `agent.run_completed`, `agent.run_escalated`,
 `agent.run_failed`, `agent.run_queued` (M2), `agent.created_from_template` (M2),
 `task.created` / `task.updated` (M2), `agent.tool_denied`, `agent.tool_executed` (MEDIUM/HIGH or
-approved), `agent.approval_requested`, `agent.approval_decided`.
+approved), `agent.approval_requested`, `agent.approval_decided`, `knowledge.access_changed` (M3),
+`memory.created` / `memory.updated` / `memory.deleted` / `memory.user_forgotten` (M4,
+scope and subject only, never content).
 
 ## Knowledge access control (M3)
 
@@ -51,6 +53,13 @@ SQL predicate inside every knowledge query (listing, fetch, semantic search and
 table query), applied before ranking and limits. Agents read as the user who
 started the run. Grants are changed with `knowledge:manage_access` and audited as
 `knowledge.access_changed`. See [knowledge.md](knowledge.md#access-control-m3).
+
+## Memory privacy (M4)
+
+`USER` memories are readable only by the person they are about and by runs that
+person starts. Admins cannot list them. Shared agent memory written by an agent
+needs approval by default. Credentials and card numbers are rejected, and
+retention is configurable per organization. See [memory.md](memory.md).
 
 ## Separation of duties (M2)
 

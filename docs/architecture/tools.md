@@ -42,6 +42,10 @@ exposes both (`GET /api/v1/tools`).
 | `notify_member` (M2) | MEDIUM | `member:view` | AUTO (Executive AI binds it as APPROVAL_REQUIRED) |
 | `list_data_tables` (M3) | LOW | `knowledge:search` | AUTO |
 | `query_data_table` (M3) | LOW | `knowledge:search` | AUTO |
+| `save_user_memory` (M4) | MEDIUM | `memory:write` | AUTO |
+| `save_agent_memory` (M4) | MEDIUM | `memory:write` | APPROVAL_REQUIRED |
+| `recall_memories` (M4) | LOW | `memory:view` | AUTO |
+| `forget_user_memory` (M4) | MEDIUM | `memory:write` | AUTO |
 
 The work tools (M2) act only through `context.workspace`, an `AgentWorkspace`
 that the runtime binds to the run's organization, agent, run and initiator.
@@ -53,6 +57,9 @@ The table tools (M3) act only through `context.knowledge_tables`. It is scoped t
 the agent's attached knowledge bases and to what the run's initiator may read,
 and it re-checks both on every call. Queries use the declarative spec described
 in [knowledge.md](knowledge.md#structured-retrieval-m3), never raw SQL.
+
+The memory tools (M4) act only through `context.memory`, bound to the run's
+organization, agent, run and initiator. See [memory.md](memory.md).
 
 Integrations (email, calendar, CRM, messaging, payments) are not stubbed. Each
 will arrive as a real handler with an honest risk level and permission.

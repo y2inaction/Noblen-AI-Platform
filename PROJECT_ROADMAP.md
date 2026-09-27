@@ -31,7 +31,11 @@ Phases 10–11 (hardening, deployment) still apply.
   agents read as their initiator; archived bases unsearchable; CSV/XLSX tables
   with a declarative query API and agent tools (`list_data_tables`,
   `query_data_table`).
-- ⬜ **M4: Memory.** User, agent and organizational memory stores.
+- ✅ **M4: Memory.** Scoped user, agent and organizational memory (`memories`) with
+  explicit write paths: owner and manager APIs, and the agent tools `save_user_memory`,
+  `save_agent_memory` (approval by default), `recall_memories` and `forget_user_memory`.
+  User memory is private to its person; secrets are rejected; per-organization
+  retention with worker purge; `PERSISTENT` agents load memory into context.
 - ⬜ **M5: Workflow engine.** Triggers, steps, branching, retries, approvals, schedules.
 - ⬜ **M6: Integrations.** MCP adapter, credential references, email/calendar/CRM.
 - ⬜ **M7: Operating-environment UI.** Dashboard, workforce, approvals inbox, runs.

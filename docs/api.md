@@ -114,6 +114,18 @@ escalated). See [`architecture/agents.md`](./architecture/agents.md).
 
 `PATCH /organizations/current` accepts `require_independent_approval` (separation of duties).
 
+### Memory — `/api/v1/memories` (Noblen AI 3.0, M4)
+| Method | Path | Permission |
+|---|---|---|
+| GET | `/memories?scope=&agent_id=&q=&limit=&offset=` | `memory:view` (own USER memories plus AGENT and ORGANIZATION) |
+| POST | `/memories` `{scope, content, category?, agent_id?}` | own USER: `memory:write`; AGENT/ORGANIZATION: `memory:manage` |
+| GET/PATCH/DELETE | `/memories/{id}` | as above; other people's USER memories are always 404 |
+| DELETE | `/memories/mine` | `memory:write`: deletes all of the caller's USER memories |
+
+Retention is set with `PATCH /organizations/current` `{"memory_retention_days": 90}`
+(`org:manage`; `null` keeps memories until deleted). See
+[`architecture/memory.md`](architecture/memory.md).
+
 ### Runs & AI Operations — `/api/v1` (Noblen AI 3.0, M1)
 | Method | Path | Permission |
 |--------|------|------------|

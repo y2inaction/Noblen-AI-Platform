@@ -91,8 +91,9 @@ answers the remaining calls of the paused turn, and continues the loop.
    document ACLs by user and role, enforced inside the retrieval query; agents read
    as their initiator; CSV/XLSX tables with a declarative query spec and the
    `list_data_tables` / `query_data_table` tools.
-4. **M4: Memory.** Add user, agent and organizational memory stores with explicit
-   write paths.
+4. **M4: Memory** ✅ Scoped `USER` / `AGENT` / `ORGANIZATION` memory with explicit
+   write paths (owner and manager APIs, approval-gated agent tools), private user
+   memory, retention, and context loading for `PERSISTENT` agents.
 5. **M5: Workflow engine.** Triggers, steps, branching, retries, approval steps and
    schedules, with agents as steps.
 6. **M6: Integrations.** An MCP adapter, credential references, and email,

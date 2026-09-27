@@ -38,7 +38,8 @@ id, conversation id, and a safe org-settings snapshot) — never DB/env/secrets/
 Built-ins: `get_current_time`, `get_organization_settings`, `echo`.
 
 **Memory.** `NONE` (current turn only), `CONVERSATION` (bounded recent window),
-`PERSISTENT` (bounded window today; the documented extension point for Phase 4 RAG).
+`PERSISTENT` (bounded window plus long-term user, agent and organization memory loaded
+into the system prompt since 3.0 M4; see [`architecture/memory.md`](architecture/memory.md)).
 Bounded by `AGENT_MEMORY_MAX_MESSAGES`.
 
 **Approvals.** An `APPROVAL_REQUIRED` tool creates a PENDING `Approval` and stops

@@ -6,6 +6,25 @@ and the project uses Conventional Commits.
 
 ## [Unreleased]
 
+### Added — Noblen AI 3.0, Milestone 4 (Memory)
+- **Scoped long-term memory:** a `memories` table with `USER`, `AGENT` and
+  `ORGANIZATION` scopes, a subject and provenance (person, agent, run).
+- **Human write paths:** `/memories` API. People manage their own user memories
+  (`memory:write`); managers manage agent and organization memories (`memory:manage`).
+  `DELETE /memories/mine` forgets everything about the caller.
+- **Agent write paths:** tools `save_user_memory`, `save_agent_memory` (shared, so
+  approval is required by default), `recall_memories` and `forget_user_memory`,
+  acting through a run-bound `AgentMemory` capability.
+- **Privacy:** user memories are readable only by their person and runs they start,
+  not by admins. Credentials and card numbers are rejected. Audit and run traces
+  never store memory content.
+- **Context:** `PERSISTENT` agents load up to 20 memories per scope into the system
+  prompt as labelled reference data, and the run trace records a `MEMORY` step with counts.
+- **Retention:** `organizations.memory_retention_days`. Stale memories are hidden at
+  once and purged by the worker.
+- **Executive AI** (template version 2) uses `PERSISTENT` memory and binds the memory tools.
+- Migration `121c8c4186bf`; `MEMORY_*` settings.
+
 ### Added — Noblen AI 3.0, Milestone 3 (Knowledge permissions + structured retrieval)
 - **Knowledge ACLs:** knowledge-base visibility (`ORGANIZATION` / `RESTRICTED`) and
   document visibility (`INHERIT` / `RESTRICTED`) with user and role grants

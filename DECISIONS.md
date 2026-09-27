@@ -298,3 +298,19 @@ text for semantic search.
 PostgreSQL and SQLite, and governed by the same access rules. JSON rows are not
 indexed per column, so very large tables are bounded by `KNOWLEDGE_MAX_TABLE_ROWS`.
 Joins and external databases need a later design.
+
+### ADR-0029 — Long-term memory is scoped, with explicit write paths
+**Status:** Accepted (3.0 M4)
+**Decision:** User, agent and organizational memory share one tenant-scoped table
+with an explicit `scope`, a subject and provenance. Nothing is remembered
+implicitly: people write through the API (their own user memories, or agent and
+organization memories with `memory:manage`), and agents write only through tools
+bound to them. Those tools can only write about the run's initiator or for the
+agent itself. Shared agent memory needs approval by default. User memory is
+private to its person and the runs they start, including from admins. Agents in
+`PERSISTENT` mode get memories in their system prompt as labelled reference
+data; other modes do not. Recall is text matching for now.
+**Consequences:** Memory is governed like any other agent action (permission
+ceiling, approval, trace, audit) and cannot leak between people through the
+agent. Operators cannot inspect someone's private memories. Semantic recall and
+per-scope retention can be added without changing the model.
