@@ -6,8 +6,9 @@ QUEUED; workers claim the oldest one with `SELECT ... FOR UPDATE SKIP LOCKED`
 run, and no extra broker is required. Run state is persisted per step, so the
 trace, approvals and escalations behave exactly as for synchronous runs.
 
-Between runs the worker also does housekeeping: deleting long-term memories
-past their organization's retention period (M4).
+When no agent run is queued, the worker advances workflows (M5): it queues due
+schedules, wakes runs whose agent step finished, and executes one workflow run.
+It also deletes long-term memories past their organization's retention (M4).
 
 Run it with:  python -m app.agents.worker
 """
@@ -31,6 +32,7 @@ from app.core.logging import clear_context, configure_logging, get_logger
 from app.models.enums import RunStatus
 from app.models.run import AgentRun
 from app.services import memory_service
+from app.workflows import worker as workflow_worker
 
 logger = get_logger("agents.worker")
 
@@ -116,6 +118,8 @@ async def run_worker(
             await purge_expired_memories(session_factory)
             last_purge = time.monotonic()
         processed = await process_next(session_factory, runtime)
+        if processed is None:
+            processed = await workflow_worker.tick(session_factory, runtime)
         if processed is None:
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(stop.wait(), timeout=poll_seconds)

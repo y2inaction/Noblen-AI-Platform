@@ -69,6 +69,9 @@ class ToolHandler(abc.ABC):
     #: RBAC permission the *initiating user* must hold for an agent to use this
     #: tool on their behalf — an agent can never exceed its user's rights.
     required_permission: str | None = None
+    #: Whether workflow tool steps may call this tool (M5). Tools that need an
+    #: agent's capabilities (knowledge scoped to an agent, agent memory) cannot.
+    available_in_workflows: bool = False
 
     def effective_mode(self, configured_mode: str) -> str:
         """Combine the configured permission mode with the tool's risk level.

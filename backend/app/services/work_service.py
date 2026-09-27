@@ -135,7 +135,27 @@ async def create_task(
             link={"type": "task", "id": str(task.id)},
             sent_by_agent_id=created_by_agent_id,
         )
+    await _emit(db, organization_id, "task.created", task)
     return task
+
+
+async def _emit(db: AsyncSession, organization_id: uuid.UUID, event: str, task: Task) -> None:
+    """Start workflows listening to a task event (M5). Imported lazily: the
+    workflow engine itself uses this module."""
+    from app.workflows.service import emit_event
+
+    await emit_event(
+        db,
+        organization_id,
+        event,
+        {
+            "task_id": str(task.id),
+            "title": task.title,
+            "status": task.status,
+            "priority": task.priority,
+            "assignee_id": str(task.assignee_id) if task.assignee_id else None,
+        },
+    )
 
 
 async def get_task(db: AsyncSession, organization_id: uuid.UUID, task_id: uuid.UUID) -> Task:
@@ -210,10 +230,15 @@ async def update_task(
                     sent_by_agent_id=actor_agent_id,
                 )
         task.assignee_id = new_assignee
+    completed = False
     if changes.get("status") is not None:
+        previous = task.status
         task.status = _check_enum(changes["status"], TaskStatus, "status")
         task.completed_at = _now() if task.status == TaskStatus.DONE.value else None
+        completed = task.status == TaskStatus.DONE.value and previous != TaskStatus.DONE.value
     await db.flush()
+    if completed:
+        await _emit(db, organization_id, "task.completed", task)
     return task
 
 
@@ -351,7 +376,7 @@ class AgentWorkspace:
 
     db: AsyncSession
     organization_id: uuid.UUID
-    agent_id: uuid.UUID
+    agent_id: uuid.UUID | None  # None for workflow tool steps (M5)
     run_id: uuid.UUID | None
     user_id: uuid.UUID | None
 

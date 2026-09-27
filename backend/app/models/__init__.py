@@ -38,6 +38,7 @@ from app.models.team import Team, TeamMember
 from app.models.tool import AgentTool, Tool
 from app.models.user import User
 from app.models.work import Notification, Task
+from app.models.workflow import Workflow, WorkflowRun, WorkflowStepRun, WorkflowVersion
 
 __all__ = [
     "Base",
@@ -75,4 +76,8 @@ __all__ = [
     "Task",
     "Notification",
     "Memory",
+    "Workflow",
+    "WorkflowVersion",
+    "WorkflowRun",
+    "WorkflowStepRun",
 ]

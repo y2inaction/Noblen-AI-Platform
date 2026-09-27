@@ -16,6 +16,7 @@ from app.rbac.permissions import Permission
 
 class GetCurrentTimeTool(ToolHandler):
     handler_identifier = "get_current_time"
+    available_in_workflows = True
     name = "get_current_time"
     description = "Return the current UTC time (ISO 8601) and the organization timezone."
     tool_type = "system"
@@ -35,6 +36,7 @@ class GetCurrentTimeTool(ToolHandler):
 
 class GetOrganizationSettingsTool(ToolHandler):
     handler_identifier = "get_organization_settings"
+    available_in_workflows = True
     name = "get_organization_settings"
     description = "Return the current organization's non-sensitive settings."
     tool_type = "system"

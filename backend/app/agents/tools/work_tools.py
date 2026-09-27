@@ -79,6 +79,7 @@ class CreateTaskTool(_WorkTool):
     risk_level = ToolRiskLevel.MEDIUM.value
     required_permission = Permission.TASK_MANAGE
     default_permission_mode = ToolPermissionMode.AUTO.value
+    available_in_workflows = True
 
     async def run(self, context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         ws = context.workspace
@@ -109,6 +110,7 @@ class ListTasksTool(_WorkTool):
     risk_level = ToolRiskLevel.LOW.value
     required_permission = Permission.TASK_VIEW
     default_permission_mode = ToolPermissionMode.AUTO.value
+    available_in_workflows = True
 
     async def run(self, context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         limit = arguments.get("limit") or 20
@@ -141,6 +143,7 @@ class UpdateTaskTool(_WorkTool):
     risk_level = ToolRiskLevel.MEDIUM.value
     required_permission = Permission.TASK_MANAGE
     default_permission_mode = ToolPermissionMode.AUTO.value
+    available_in_workflows = True
 
     async def run(self, context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         ws = context.workspace
@@ -182,6 +185,7 @@ class NotifyMemberTool(_WorkTool):
     risk_level = ToolRiskLevel.MEDIUM.value
     required_permission = Permission.MEMBER_VIEW
     default_permission_mode = ToolPermissionMode.AUTO.value
+    available_in_workflows = True
 
     async def run(self, context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         ws = context.workspace

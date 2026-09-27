@@ -76,6 +76,8 @@ class Permission:
     KNOWLEDGE_READ_ALL = "knowledge:read_all"
     WORKFLOW_VIEW = "workflow:view"
     WORKFLOW_MANAGE = "workflow:manage"
+    # M5: start a workflow manually (and be the authority a manual run acts under).
+    WORKFLOW_RUN = "workflow:run"
     TASK_VIEW = "task:view"
     TASK_MANAGE = "task:manage"
     # Memory (M4): read memories; write your own; manage agent/organization memory.
@@ -114,6 +116,7 @@ _MEMBER_PERMISSIONS = _VIEW_PERMISSIONS + [
     Permission.CONVERSATION_WRITE,
     Permission.KNOWLEDGE_SEARCH,
     Permission.MEMORY_WRITE,
+    Permission.WORKFLOW_RUN,
 ]
 
 # OPERATOR (AI Operator): supervises deployed agents — decides approvals,

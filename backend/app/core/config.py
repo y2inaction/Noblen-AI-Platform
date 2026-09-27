@@ -102,6 +102,12 @@ class Settings(BaseSettings):
     # How often the worker deletes memories past their organization's retention.
     MEMORY_PURGE_INTERVAL_SECONDS: float = 3600.0
 
+    # ---- Workflow engine (Noblen AI 3.0, M5) ----
+    WORKFLOW_MAX_STEPS: int = 50  # steps in one definition
+    WORKFLOW_MAX_STEPS_PER_RUN: int = 100  # executed steps per run (bounds loops)
+    WORKFLOW_MAX_EVENT_DEPTH: int = 3  # workflow → event → workflow chains
+    WORKFLOW_MIN_INTERVAL_MINUTES: int = 5  # shortest schedule
+
     # ---- Knowledge + RAG (Phase 4) ----
     # Embedding model config. The vector column dimension is fixed platform-wide
     # (KNOWLEDGE_EMBEDDING_DIMENSION) and must match the configured model.

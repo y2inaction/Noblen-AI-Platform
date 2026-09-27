@@ -18,6 +18,7 @@ from app.api.v1 import (
     tools,
     users,
     work,
+    workflows,
 )
 
 api_router = APIRouter()
@@ -34,3 +35,4 @@ api_router.include_router(runs.router)
 api_router.include_router(work.router)
 api_router.include_router(templates.router)
 api_router.include_router(memory.router)
+api_router.include_router(workflows.router)

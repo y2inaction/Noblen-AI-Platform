@@ -180,3 +180,35 @@ class MemoryScope(str, enum.Enum):
     USER = "USER"  # private to one person (and agents they run)
     AGENT = "AGENT"  # shared by everyone who uses one agent
     ORGANIZATION = "ORGANIZATION"  # institutional, readable by all members
+
+
+# ---- Workflows (Noblen AI 3.0, M5) ----
+class WorkflowStatus(str, enum.Enum):
+    DRAFT = "DRAFT"
+    ACTIVE = "ACTIVE"
+    PAUSED = "PAUSED"
+    ARCHIVED = "ARCHIVED"
+
+
+class WorkflowTriggerType(str, enum.Enum):
+    MANUAL = "MANUAL"
+    SCHEDULE = "SCHEDULE"
+    EVENT = "EVENT"
+
+
+class WorkflowRunStatus(str, enum.Enum):
+    QUEUED = "QUEUED"  # waiting for a worker (also: waiting for a retry's backoff)
+    RUNNING = "RUNNING"
+    WAITING = "WAITING"  # on a human approval or an agent's own approval
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    ESCALATED = "ESCALATED"
+    CANCELLED = "CANCELLED"
+
+
+class WorkflowStepStatus(str, enum.Enum):
+    RUNNING = "RUNNING"
+    WAITING = "WAITING"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    REJECTED = "REJECTED"
