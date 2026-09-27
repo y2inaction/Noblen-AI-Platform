@@ -368,3 +368,53 @@ are escalated. Claims use `FOR UPDATE SKIP LOCKED`.
 or creates a duplicate task. The cost is human attention after a crash, and up to
 `STALE_RUN_SECONDS` of delay before recovery. Resuming agent runs exactly (per-tool
 idempotency keys) is left for later.
+
+### ADR-0034 — PostgreSQL Row-Level Security as a second tenant boundary
+**Status:** Proposed (security review, 2026-09). Not implemented.
+Details: [`docs/architecture/adr-0034-postgres-rls.md`](docs/architecture/adr-0034-postgres-rls.md).
+**Decision:** Enforce `organization_id` in PostgreSQL as well as in the application.
+The API and tenant work use a non-owner `noblen_app` role without `BYPASSRLS`. The
+tenant is set per transaction with `set_config(..., true)` from an `after_begin`
+session event. Policies fail closed when the setting is missing. Cross-tenant work
+(worker claims, schedules, recovery, purges, the webhook lookup) uses an explicit
+`system_session()` on a `BYPASSRLS` role that returns ids only. Migrations run as the
+owner. Intra-tenant rules stay in the application.
+**Consequences:** One missing filter can no longer leak another tenant's data. It
+requires new database roles and connection strings, a startup role check, and a
+PostgreSQL-only test suite. Rollout is staged: enable first, then `FORCE`.
+
+### ADR-0035 — Workflow and run content is visible to its participants
+**Status:** Proposed (security review, 2026-09). Not implemented. Production-blocking.
+Details: [`docs/architecture/adr-0035-workflow-output-authorization.md`](docs/architecture/adr-0035-workflow-output-authorization.md).
+**Decision:** Workflow and agent runs split metadata (organization-visible under
+`:view`) from content (`input`, `context`, step outputs, free-text reasons), which is
+visible only to the person the run acts for. Approvers see only the approval request
+they decide. This is enforced in the service layer with one predicate per resource.
+**Consequences:** It closes the leak where any VIEWER could read agent answers derived
+from another member's restricted knowledge or private memory via
+`GET /workflow-runs/{id}`. Operators keep metadata. The UI shows content as withheld.
+
+### ADR-0036 — One visibility model: Tenant, Role, Participant, Owner, Restricted, System
+**Status:** Proposed (security review, 2026-09).
+Details: [`docs/architecture/adr-0036-visibility-model.md`](docs/architecture/adr-0036-visibility-model.md).
+**Decision:** Every field of every resource has one of six nested levels. Permissions
+gate actions and resource types; they never widen rows (except the existing
+`knowledge:read_all`). Derived data inherits the narrowest level of its inputs unless
+it passes an explicit, authorized, audited publication sink. Agents and workflows act
+only as one person and never hold authority of their own.
+**Consequences:** Existing predicates (`tenant_scoped`, `require_permission`,
+`readable_by`, memory scopes, knowledge ACLs) map onto the levels. There are no new
+permission families and no policy engine.
+
+### ADR-0037 — Permission propagation through provenance references
+**Status:** Proposed (security review, 2026-09).
+Details: [`docs/architecture/adr-0037-permission-propagation-provenance.md`](docs/architecture/adr-0037-permission-propagation-provenance.md).
+**Decision:** Runs record a bounded list of source references: knowledge documents and
+tables, memories, integration connections, upstream steps, external input. They also
+record the acting role. References are captured at the existing choke points, never as
+copied content. A non-participant sees run content only if they can read every source,
+checked in bulk with the existing predicates. A missing or truncated source list fails
+closed.
+**Consequences:** Visibility can safely widen beyond participants, and publications
+(tasks, shared memory, outbound sends) become attributable to their sources. The cost
+is four columns and one bulk check per non-participant content read.
