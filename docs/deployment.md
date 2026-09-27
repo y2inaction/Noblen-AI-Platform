@@ -28,6 +28,12 @@ cp .env.example .env         # then fill in real secrets
 backend health check. Migrations run automatically at container start
 (`backend/docker/entrypoint.sh`) when `DATABASE_URL` points at PostgreSQL.
 
+The `worker` service runs `python -m app.agents.worker` from the backend image
+to execute background agent runs. It sets `SKIP_MIGRATIONS=true`, starts only
+after the backend is healthy (so migrations are applied), and can be scaled
+horizontally (`docker compose up -d --scale worker=3`), because runs are claimed
+with `FOR UPDATE SKIP LOCKED`.
+
 ## HTTPS
 Mount certificates into `infra/nginx/certs` and add a TLS `server` block (443) that
 redirects 80 → 443. Automate issuance/renewal with Certbot/Let's Encrypt.

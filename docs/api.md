@@ -95,6 +95,25 @@ Agent execution returns a normalized result whose `status` is `completed`,
 `awaiting_approval` or `escalated`, with a `run_id` (and `escalation_reason` when
 escalated). See [`architecture/agents.md`](./architecture/agents.md).
 
+### Agent templates — `/api/v1/agent-templates` (Noblen AI 3.0, M2)
+| Method | Path | Permission |
+|--------|------|------------|
+| GET | `/agent-templates` | `agent:view` |
+| POST | `/agent-templates/{key}/instantiate` `{"name"?, "activate"?}` | `agent:create` + `tool:manage` + `agent:manage_versions` |
+
+`POST /agents/{id}/execute` accepts `"background": true` → **202** `status: "queued"`
+(run executed by the worker; poll `/runs/{run_id}`).
+
+### Tasks & notifications — `/api/v1` (Noblen AI 3.0, M2)
+| Method | Path | Permission |
+|--------|------|------------|
+| GET | `/tasks?status&open_only&mine&assignee_id` · `/tasks/{id}` | `task:view` |
+| POST | `/tasks` · PATCH `/tasks/{id}` | `task:manage` |
+| GET | `/notifications?unread_only` (caller's own) | any member |
+| POST | `/notifications/{id}/read` · `/notifications/read-all` | any member (own only) |
+
+`PATCH /organizations/current` accepts `require_independent_approval` (separation of duties).
+
 ### Runs & AI Operations — `/api/v1` (Noblen AI 3.0, M1)
 | Method | Path | Permission |
 |--------|------|------------|

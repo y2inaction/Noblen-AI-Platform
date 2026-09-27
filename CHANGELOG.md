@@ -6,6 +6,23 @@ and the project uses Conventional Commits.
 
 ## [Unreleased]
 
+### Added — Noblen AI 3.0, Milestone 2 (First AI Workforce)
+- **Tasks and notifications:** tenant-scoped `tasks` and in-app `notifications`,
+  with `/tasks` and `/notifications` APIs. Assignees and recipients must be
+  active members, and notifications are private to their recipient.
+- **Workforce tools:** `create_task`, `list_tasks`, `update_task` and
+  `notify_member`, reaching data only through a runtime-injected, tenant-,
+  agent- and run-bound `AgentWorkspace`. Tasks record the creating agent and run.
+- **Reference agents:** `executive-ai` and `customer-ai` templates
+  (`GET /agent-templates`, `POST /agent-templates/{key}/instantiate`).
+- **Background execution:** `"background": true` on execute returns 202 and
+  queues the run. The worker (`python -m app.agents.worker`, Compose `worker`
+  service) claims runs with `FOR UPDATE SKIP LOCKED`.
+- **Alerts:** approvers are notified of pending approvals; operators and the
+  initiator are notified of escalations.
+- **Separation of duties:** the `require_independent_approval` organization setting.
+- Migration `179df45d96e3`, and the `SKIP_MIGRATIONS` entrypoint switch.
+
 ### Added — Noblen AI 3.0, Milestone 1 (Controlled autonomy & AI operations)
 - **Run traces:** every agent execution is an `AgentRun` with an append-only
   `AgentRunStep` trace (model calls, tool calls, approvals, escalations) and

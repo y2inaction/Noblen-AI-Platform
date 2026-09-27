@@ -9,8 +9,9 @@ Agent ─► AgentTool binding ─► Tool (catalogue row) ─► ToolHandler (c
 
 Only handlers registered in code can run. A model's tool call is resolved to a
 handler by name, or rejected. Handlers receive only a `ToolContext` (org, user,
-agent, conversation, a safe org-settings snapshot, and a scoped knowledge-search
-capability), never the database session, secrets or OS.
+agent, conversation, a safe org-settings snapshot, a scoped knowledge-search
+capability and, since M2, a scoped work-items `workspace`), never the database
+session, secrets or OS.
 
 ## Handler contract
 
@@ -35,6 +36,16 @@ exposes both (`GET /api/v1/tools`).
 | `get_organization_settings` | LOW | `org:view` | AUTO |
 | `echo` | LOW | — | APPROVAL_REQUIRED (demonstrates the approval flow) |
 | `search_knowledge` | LOW | `knowledge:search` | AUTO |
+| `create_task` (M2) | MEDIUM | `task:manage` | AUTO |
+| `list_tasks` (M2) | LOW | `task:view` | AUTO |
+| `update_task` (M2) | MEDIUM | `task:manage` | AUTO |
+| `notify_member` (M2) | MEDIUM | `member:view` | AUTO (Executive AI binds it as APPROVAL_REQUIRED) |
+
+The work tools (M2) act only through `context.workspace`, an `AgentWorkspace`
+that the runtime binds to the run's organization, agent, run and initiator.
+Assignees and recipients are addressed by email and must be **active members of
+that organization**. Tasks record the agent and run that created them. Nothing
+can be sent outside the organization.
 
 Integrations (email, calendar, CRM, messaging, payments) are not stubbed. Each
 will arrive as a real handler with an honest risk level and permission.

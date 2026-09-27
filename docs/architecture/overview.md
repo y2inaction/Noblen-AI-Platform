@@ -2,7 +2,7 @@
 
 > **Status:** living document. It describes what is **implemented** and marks
 > everything else as *planned*. Last updated with Milestone 1 (Controlled Autonomy
-> & AI Operations).
+> & AI Operations) and Milestone 2 (First AI Workforce).
 
 ## 1. Target architecture
 
@@ -47,7 +47,10 @@ handling, observability, auditability and human escalation.
 | Memory beyond conversations | — [memory.md](memory.md) | 🟡 conversation + execution memory only |
 | Workflow engine | — [workflows.md](workflows.md) | ⬜ Planned |
 | Integrations / MCP adapters | — | ⬜ Planned |
-| Reference AI Workforce agents | — [../product/workforce.md](../product/workforce.md) | ⬜ Planned (M2) |
+| **Tasks & notifications, workforce tools** | `app/services/work_service.py`, `app/agents/tools/work_tools.py` | ✅ **M2** |
+| **Reference AI Workforce agents (Executive AI, Customer AI)** | `app/agents/templates.py` — [../product/workforce.md](../product/workforce.md) | ✅ **M2** (others planned) |
+| **Background execution (DB-queue worker)** | `app/agents/worker.py` | ✅ **M2** |
+| **Approval/escalation alerts, separation of duties** | runtime, `/approvals` | ✅ **M2** |
 | Operating-environment UI | `frontend/` (dashboard shell, playground) | ⬜ Planned |
 
 ## 3. Execution path of one agent task
@@ -78,12 +81,12 @@ answers the remaining calls of the paused turn, and continues the loop.
 
 ## 4. Implementation sequence
 
-1. **M1: Controlled autonomy & AI operations** ✅ (this milestone).
-2. **M2: Execution hardening + first workforce.** Run agents on a worker queue,
-   send approval notifications, add separation-of-duties settings, build
-   Executive AI and Customer AI from templates with their first real tools
-   (tasks, notes, notifications), and harden model replay (preserve provider-native
-   content for models with interleaved thinking).
+1. **M1: Controlled autonomy & AI operations** ✅
+2. **M2: First AI Workforce + execution hardening** ✅ Tasks and notifications,
+   workforce tools, Executive AI and Customer AI templates, background worker,
+   approval/escalation alerts, separation of duties. *Carried forward:*
+   provider-native replay (needed only before defaulting to a model that thinks
+   by default) and automatic re-queueing of stale runs.
 3. **M3: Knowledge permissions.** Add document/collection ACLs by user and role on
    top of the Phase 4 org + agent scoping, plus structured (SQL) retrieval next to
    vector search.

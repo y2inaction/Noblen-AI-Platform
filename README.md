@@ -18,7 +18,9 @@ logging.
 Phases 1–4 are implemented: foundation, model gateway, agent engine, and knowledge +
 RAG. Noblen AI 3.0 Milestone 1 adds controlled autonomy and AI operations: run
 traces, escalation, risk-based approvals, the AI Operator role, and workforce
-metrics. See [`docs/architecture/overview.md`](docs/architecture/overview.md) for
+metrics. Milestone 2 adds the first AI Workforce: Executive AI and Customer AI
+templates, task and notification tools, background execution and separation of
+duties. See [`docs/architecture/overview.md`](docs/architecture/overview.md) for
 live component status and [`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md) for what's next.
 
 ## Tech stack

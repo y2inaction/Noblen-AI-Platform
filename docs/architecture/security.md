@@ -36,15 +36,22 @@ The hierarchy is `VIEWER ⊂ MEMBER ⊂ OPERATOR ⊂ MANAGER ⊂ ADMIN`. This is
 - **Retrieved content is untrusted data** and cannot change instructions or
   permissions (Phase 4).
 
-## Audit events added in M1
+## Audit events added in 3.0 (M1–M2)
 
 `agent.run_started`, `agent.run_completed`, `agent.run_escalated`,
-`agent.run_failed`, `agent.tool_denied`, `agent.tool_executed` (MEDIUM/HIGH or
+`agent.run_failed`, `agent.run_queued` (M2), `agent.created_from_template` (M2),
+`task.created` / `task.updated` (M2), `agent.tool_denied`, `agent.tool_executed` (MEDIUM/HIGH or
 approved), `agent.approval_requested`, `agent.approval_decided`.
+
+## Separation of duties (M2)
+
+`organizations.require_independent_approval` stops initiators from deciding
+their own runs' approvals (`403 independent_approval_required`). It is off by
+default and toggled by org admins (`org:manage`).
 
 ## Known gaps
 
-- The initiator may approve their own run's actions. Separation of duties is planned.
+- Separation of duties is organization-wide. It is not yet configurable per risk level or per tool.
 - There is no per-organization budget cap on model spend yet.
 - PostgreSQL row-level security is planned as defence in depth.
 - Per-organization integration credentials (`CredentialReference`) arrive with integrations.

@@ -97,14 +97,41 @@ multi-call resume, resume in no-memory mode, execution on behalf of the initiato
 modify, reject notes, the kill switch, disabled tools, operations metrics, tenant
 isolation, the operator role and the SUPER_ADMIN grant.
 
+## Background execution (M2)
+
+`POST /agents/{id}/execute` with `"background": true` admits the task (the user
+message is stored and a run is created as `QUEUED`) and returns **202** with
+`status: "queued"` and a `run_id`. Poll `GET /runs/{run_id}`.
+
+Workers (`python -m app.agents.worker`, the `worker` Compose service) use the
+**database as the queue**. Each worker claims the oldest queued run with
+`SELECT … FOR UPDATE SKIP LOCKED`, so several workers can run side by side, then
+drives it through the same loop as a synchronous run. Trace, approvals,
+escalation and audit are identical. The kill switch applies: a queued run whose
+agent has been paused escalates instead of starting. Test-version executions
+cannot be queued.
+
+## Notifications (M2)
+
+- **Approval requested:** every active member who can decide approvals
+  (`agent:approve_actions`) gets an in-app notification linking the approval.
+- **Run escalated:** the same people and the run's initiator are notified, with
+  the escalation reason.
+
+## Separation of duties (M2)
+
+With the organization setting `require_independent_approval` on
+(`PATCH /organizations/current`), the person who started a run cannot approve,
+modify or reject its actions. The API returns `403
+independent_approval_required`, and this applies to platform admins too. The
+setting is off by default, so a single-person organization can still work.
+
 ## Limitations
 
-- Runs execute synchronously inside the request. A worker queue is planned for M2.
-  State is persisted per step, so moving execution to a worker only changes the
-  entry point.
-- The person who started a run may approve it. Separation of duties is planned.
-- There are no approval notifications yet. Approvals expire by TTL (Phase 3).
+- A worker that dies mid-run leaves the run `RUNNING`. Re-queueing stale runs
+  automatically is not implemented yet.
+- There are no email or chat delivery channels for notifications yet (in-app only).
 - Model turns are replayed from neutral messages. Provider-native content (for
   example Claude thinking blocks) is not preserved yet. This is fine for the
-  current default model, and required before defaulting to models with thinking on
-  by default (M2).
+  current default model (`claude-sonnet-4-5`, no extended thinking), and required
+  before defaulting to models that think by default.

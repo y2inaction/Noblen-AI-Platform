@@ -21,9 +21,11 @@ Phases 10–11 (hardening, deployment) still apply.
   approval modify, notes, correct multi-call and no-memory resume, and a kill switch;
   gateway fallback chain; AI Operator role; `/runs` and `/operations/overview`;
   SUPER_ADMIN grant fix.
-- ⬜ **M2: Execution hardening + first workforce.** Worker-queue execution,
-  approval notifications, separation of duties, agent templates, Executive AI and
-  Customer AI with their first real tools, and provider-native replay.
+- ✅ **M2: First AI Workforce + execution hardening.** Tasks and notifications
+  (+ APIs); workforce tools (`create_task`, `list_tasks`, `update_task`,
+  `notify_member`); Executive AI and Customer AI templates; background execution
+  on a DB-queue worker; approval and escalation alerts; separation of duties.
+  *Carried forward:* provider-native replay and stale-run re-queueing.
 - ⬜ **M3: Knowledge permissions.** Document/collection ACLs by user and role, and
   structured retrieval.
 - ⬜ **M4: Memory.** User, agent and organizational memory stores.

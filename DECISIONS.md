@@ -247,3 +247,30 @@ queue of escalations in the operations overview.
 and pausing agents (`agent:operate`), and viewing runs, operations and usage. It
 cannot author or reconfigure agents. `SUPER_ADMIN` can only be granted by a
 platform admin.
+
+### ADR-0024 — Agent tools reach data through injected, scoped capabilities
+**Status:** Accepted (3.0 M2). Extends ADR-0015.
+**Decision:** Tools still never receive a DB session. Like `knowledge_search`,
+work items are exposed as an `AgentWorkspace` built by the runtime and bound to
+the run's organization, agent, run and initiator. Services validate that
+referenced people are active members of that organization.
+**Consequences:** New data-backed tools follow one pattern. Tenancy and
+attribution cannot be chosen by model arguments.
+
+### ADR-0025 — The database is the run queue
+**Status:** Accepted (3.0 M2). Supersedes the "synchronous only" part of ADR-0016.
+**Decision:** Background runs are `QUEUED` rows claimed by workers with
+`SELECT … FOR UPDATE SKIP LOCKED`. The worker is the backend image with a different
+command. No new broker is introduced (Redis stays for rate limiting and caching).
+**Consequences:** Durable, horizontally scalable execution with no new infrastructure.
+Throughput is bounded by polling (fine at current scale). A crashed worker leaves
+its run `RUNNING` until stale-run recovery is added.
+
+### ADR-0026 — Reference agents are templates, not code
+**Status:** Accepted (3.0 M2)
+**Decision:** Executive AI and Customer AI are data (instructions, memory, tool
+bindings and policies) instantiated into ordinary agents. A template only lists
+tools that genuinely work, and planned capabilities are listed separately.
+**Consequences:** BusinessOS and IndustryOS packages can ship as template sets.
+Improving a template does not change existing agents: the organization cuts a
+new version.

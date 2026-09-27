@@ -36,6 +36,12 @@ The overview returns:
 - tokens, estimated cost, and usage by provider and model;
 - the 10 most recent escalations with their reasons.
 
+## Alerts (M2)
+
+In-app notifications (`GET /notifications`) tell approvers when an action is
+waiting, and tell operators plus the initiator when a run escalates. Delivery by
+email or chat channels is planned with integrations.
+
 ## Planned
 
 OpenTelemetry/Prometheus export, per-agent trends, anomaly flags (spend or denial

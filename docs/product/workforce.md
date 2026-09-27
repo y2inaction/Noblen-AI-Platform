@@ -1,7 +1,8 @@
 # AI Workforce
 
 **Status:** the framework is implemented (Phase 3 engine + Noblen AI 3.0 M1
-controlled autonomy). The reference agents are **not yet built** (Milestone 2).
+controlled autonomy). **Executive AI and Customer AI are available as templates
+(M2).** The other reference agents are planned.
 
 All workforce agents are **configurations of one agent framework**, not separate
 codebases. Each one is an `Agent` with an immutable version (instructions, model,
@@ -9,7 +10,21 @@ fallbacks, memory), tool bindings with per-tool policies, and attached knowledge
 bases. They all run on the shared runtime with approvals, escalation, run traces
 and audit.
 
-## Reference agents (planned)
+## Available now (M2)
+
+Create either from `POST /api/v1/agent-templates/{key}/instantiate`. This creates
+an ACTIVE agent with its tools bound. Attach knowledge bases to ground answers.
+
+| Template | What it does today | Tools (policy) | Planned additions |
+|---|---|---|---|
+| `executive-ai` | briefings from open tasks, research with citations, action-item capture as assigned tasks, follow-up tracking, reminders to colleagues | time, org settings, `search_knowledge`, `list_tasks`, `create_task`, `update_task`, `notify_member` (**approval required**) | calendar, email drafting/sending |
+| `customer-ai` | answers from approved knowledge only, qualifies requests into follow-up tasks, escalates refunds/complaints/risk | time, org settings, `search_knowledge`, `create_task` | WhatsApp/email/web-chat channels, ticketing/CRM |
+
+Both run on the shared runtime: permission ceiling, risk policy, approvals,
+escalation (with operator alerts), run traces and audit. They can also run in the
+background.
+
+## Reference agents (roadmap)
 
 | Agent | Capabilities | Tools it needs (to be built as real adapters) |
 |---|---|---|
@@ -23,9 +38,21 @@ and audit.
 An agent ships only when its tools genuinely work. An agent whose tools are
 not yet built would be a chatbot, and does not count as implemented.
 
-## Acceptance scenarios (to be written as deterministic tests)
+## Acceptance scenarios (deterministic tests)
 
-- Given lead information, Sales AI qualifies the lead correctly.
-- Given an unauthorized action, the agent refuses or escalates. *(Framework behaviour already tested.)*
-- Given a knowledge source, the agent retrieves the correct information.
-- Given a high-risk action, the agent requests approval. *(Framework behaviour already tested.)*
+Implemented in `backend/tests/agents/test_workforce.py` and `test_controlled_autonomy.py`:
+
+- Executive AI turns a meeting commitment into an assigned, dated, high-priority
+  task with agent/run provenance, and the assignee is notified.
+- An Executive AI briefing reads the real open tasks (done items excluded).
+- A reminder to a colleague waits for approval, approvers are alerted, and the
+  message arrives only after approval.
+- Work tools cannot reach people outside the organization.
+- Customer AI escalates a refund demand, and operators and the initiator are alerted.
+- Customer AI logs a follow-up task.
+- Given an unauthorized or high-risk action, the agent is denied or asked for
+  approval (M1).
+
+Still to write: "Given lead information, Sales AI qualifies the lead correctly"
+(Sales AI needs CRM tools), and knowledge-grounded answers against pgvector for
+Customer AI (the retrieval path is covered by the Phase 4 RAG runtime tests).
