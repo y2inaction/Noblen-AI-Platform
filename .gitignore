@@ -63,3 +63,6 @@ Thumbs.db
 uploads/
 storage/
 tmp/
+
+# UI smoke test screenshots
+e2e-shots/
