@@ -8,15 +8,26 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import TenantContext, require_permission, user_is_platform_superuser
+from app.api.deps import (
+    TenantContext,
+    get_tenant_context,
+    require_permission,
+    user_is_platform_superuser,
+)
 from app.core.exceptions import NotFoundError, PermissionDeniedError, ValidationError
 from app.db.session import get_db
 from app.models.enums import RoleName
 from app.models.membership import OrganizationMember
 from app.models.organization import Organization
 from app.models.user import User
-from app.rbac.permissions import PLATFORM_ONLY_ROLES, Permission
+from app.rbac.permissions import (
+    ALL_PERMISSIONS,
+    PLATFORM_ONLY_ROLES,
+    Permission,
+    permissions_for_role,
+)
 from app.schemas.organization import (
+    AccessOut,
     MemberWithUser,
     OrganizationPublic,
     OrganizationUpdate,
@@ -36,6 +47,29 @@ async def _get_org(db: AsyncSession, organization_id: uuid.UUID) -> Organization
     if org is None:
         raise NotFoundError("Organization not found.")
     return org
+
+
+@router.get("/current/access", response_model=AccessOut)
+async def current_access(
+    ctx: TenantContext = Depends(get_tenant_context),
+    db: AsyncSession = Depends(get_db),
+) -> AccessOut:
+    """The caller's role and effective permissions in the active organization.
+
+    For clients to show only what the caller may do. The server still enforces
+    every permission on every request.
+    """
+    org = await _get_org(db, ctx.organization_id)
+    superuser = user_is_platform_superuser(ctx.user)
+    granted = permissions_for_role(ctx.role_name)
+    everything = superuser or Permission.WILDCARD in granted
+    return AccessOut(
+        organization_id=org.id,
+        organization_name=org.name,
+        role_name=ctx.role_name,
+        is_platform_admin=superuser,
+        permissions=sorted(ALL_PERMISSIONS if everything else granted),
+    )
 
 
 @router.get("/current", response_model=OrganizationPublic)

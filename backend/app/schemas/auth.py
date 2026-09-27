@@ -45,6 +45,7 @@ class MembershipPublic(BaseModel):
     organization_id: uuid.UUID
     role_name: str
     status: str
+    organization_name: str | None = None
 
 
 class AuthResponse(BaseModel):

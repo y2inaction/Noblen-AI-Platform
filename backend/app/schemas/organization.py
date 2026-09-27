@@ -32,6 +32,14 @@ class OrganizationUpdate(BaseModel):
     memory_retention_days: int | None = Field(default=None, ge=1, le=3650)
 
 
+class AccessOut(BaseModel):
+    organization_id: uuid.UUID
+    organization_name: str
+    role_name: str
+    is_platform_admin: bool
+    permissions: list[str]
+
+
 class MemberPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

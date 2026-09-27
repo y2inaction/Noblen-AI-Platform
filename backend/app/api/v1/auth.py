@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.membership import OrganizationMember
+from app.models.organization import Organization
 from app.models.user import User
 from app.schemas.auth import (
     AuthResponse,
@@ -68,12 +69,17 @@ async def logout(body: RefreshRequest, db: AsyncSession = Depends(get_db)) -> Me
 async def me(
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> MeResponse:
-    memberships = (
-        (await db.execute(select(OrganizationMember).where(OrganizationMember.user_id == user.id)))
-        .scalars()
-        .all()
-    )
-    return MeResponse(
-        user=UserPublic.model_validate(user),
-        memberships=[MembershipPublic.model_validate(m) for m in memberships],
-    )
+    rows = (
+        await db.execute(
+            select(OrganizationMember, Organization.name)
+            .join(Organization, Organization.id == OrganizationMember.organization_id)
+            .where(OrganizationMember.user_id == user.id)
+            .order_by(Organization.name)
+        )
+    ).all()
+    memberships = []
+    for member, org_name in rows:
+        item = MembershipPublic.model_validate(member)
+        item.organization_name = org_name
+        memberships.append(item)
+    return MeResponse(user=UserPublic.model_validate(user), memberships=memberships)
