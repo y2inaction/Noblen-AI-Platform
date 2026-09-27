@@ -14,9 +14,12 @@ logging.
 
 ## Status
 
-🚧 **Early build.** Phase 0 (Discovery) is complete and Phase 1 (Foundation) is in
-progress. See [`PROJECT_ROADMAP.md`](./PROJECT_ROADMAP.md) for the phase plan and
-[`ARCHITECTURE.md`](./ARCHITECTURE.md) for the design.
+🚧 **Evolving into Noblen AI 3.0: AI Workforce & Business Operating Systems.**
+Phases 1–4 are implemented: foundation, model gateway, agent engine, and knowledge +
+RAG. Noblen AI 3.0 Milestone 1 adds controlled autonomy and AI operations: run
+traces, escalation, risk-based approvals, the AI Operator role, and workforce
+metrics. See [`docs/architecture/overview.md`](docs/architecture/overview.md) for
+live component status and [`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md) for what's next.
 
 ## Tech stack
 

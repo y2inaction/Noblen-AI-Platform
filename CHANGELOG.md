@@ -6,6 +6,46 @@ and the project uses Conventional Commits.
 
 ## [Unreleased]
 
+### Added — Noblen AI 3.0, Milestone 1 (Controlled autonomy & AI operations)
+- **Run traces:** every agent execution is an `AgentRun` with an append-only
+  `AgentRunStep` trace (model calls, tool calls, approvals, escalations) and
+  token/cost totals. `GET /runs`, `GET /runs/{id}`.
+- **Escalation:** `escalate_to_human` control tool. Model refusal, truncation and
+  exhausted budgets end the run `ESCALATED` with a reason.
+- **Tool governance:** code-declared `risk_level` (HIGH always requires approval)
+  and `required_permission` (the initiating user's current role must hold it),
+  shown in the tools API.
+- **Approvals:** `POST /approvals/{id}/modify` (validated reviewer arguments) and
+  reviewer notes on approve/reject. Resume re-authorizes (kill switch when an
+  agent is paused or a tool disabled) and runs on behalf of the initiator.
+- **AI Operations:** `GET /operations/overview` (success, escalation and failure
+  rates, approvals, tool failures and denials, tokens, cost, usage by model,
+  recent escalations).
+- **RBAC:** `OPERATOR` (AI Operator) role; `agent:operate`, `run:view`,
+  `operations:view` permissions.
+- **Gateway:** ordered `provider:model` fallback chain (per request, per agent
+  version via `configuration.fallback_models`, and `AI_FALLBACK_MODELS`).
+- Docs: `docs/architecture/*`, `docs/product/*`, ADR-0019 to ADR-0023.
+
+### Changed
+- Exhausting an agent's iteration, tool-call or runtime budget now returns
+  `status: "escalated"` instead of HTTP 409 `runtime_limit_exceeded`.
+- Provider failures during agent execution return translated errors (e.g. 503)
+  instead of a generic 500, and are recorded as `FAILED` runs.
+- `/agents/{id}/activate` and `/pause` require `agent:operate` (held by
+  OPERATOR, MANAGER and ADMIN).
+
+### Fixed
+- Resuming after an approval left the other tool calls of the same model turn
+  unanswered, which providers reject.
+- With `memory_mode = NONE`, resuming after an approval dropped the agent's own
+  tool call and result from context.
+- Incomplete tool-call pairs at the edge of the memory window are now sanitized.
+- An approved action executed even if the tool was disabled or the agent paused
+  in the meantime.
+- Security: an organization `ADMIN` could grant the wildcard `SUPER_ADMIN` role.
+- Typing: `tenant_scoped` is generic, which fixes mypy under SQLAlchemy 2.1.
+
 ### Added — Phase 4 (Knowledge + RAG)
 - Knowledge domain (tenant-scoped): `knowledge_bases`, `knowledge_documents`,
   `document_chunks`, `document_embeddings` (pgvector), `agent_knowledge_sources`.

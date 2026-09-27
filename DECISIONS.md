@@ -198,3 +198,52 @@ labelled untrusted — they can never modify permissions, tool authorization, or
 policy.
 **Consequences:** A consistent index and a clean prompt-injection boundary; changing the
 embedding model/dimension is an explicit, handled migration rather than a silent break.
+
+---
+
+## Noblen AI 3.0
+
+### ADR-0019 — Noblen AI 3.0 extends the Phase 1–4 platform; no rewrite
+**Status:** Accepted (3.0 M1)
+**Context:** 3.0 repositions Noblen as AI Workforce & Business Operating Systems.
+Phases 1–4 already provide auth, tenancy, RBAC, a model-agnostic gateway, a
+versioned agent engine with tools and approvals, and knowledge/RAG.
+**Decision:** Build 3.0 incrementally on that core. The remaining Phase 5–9 plan
+is re-sequenced into 3.0 milestones (see `PROJECT_ROADMAP.md`).
+**Consequences:** Working, tested code is preserved. The 3.0 gaps (traceability,
+escalation, permission ceilings, operations) are closed in place.
+
+### ADR-0020 — Every agent execution is a traced run
+**Status:** Accepted (3.0 M1)
+**Decision:** `AgentRun` + append-only `AgentRunStep` record every model call,
+tool call, approval and escalation, with tokens, latency and outcome, but **no
+prompt/response text** (consistent with `AI_LOG_PROMPTS`). Content stays in the
+conversation. A run's context starts at its own user message, so resumes are
+independent of the memory window.
+**Consequences:** AI-operations metrics are plain queries. Storage grows with
+activity, so retention policies will be needed.
+
+### ADR-0021 — Tool authorization is agent ∩ current human permission; risk is code-declared
+**Status:** Accepted (3.0 M1). Refines ADR-0015.
+**Decision:** A tool runs only if it is bound to the agent and enabled, **and** the
+initiating user's *current* role holds the handler's `required_permission`.
+`risk_level` lives on the handler (code), and HIGH always requires approval. On
+resume, everything is re-checked, and a non-ACTIVE agent stops the run. Approved
+tools run on behalf of the initiator.
+**Consequences:** Agents cannot escalate privilege, and catalogue edits cannot
+loosen risk. Revocations and pauses take effect immediately.
+
+### ADR-0022 — Exceptions escalate to humans instead of failing
+**Status:** Accepted (3.0 M1). Supersedes the 409 behaviour of ADR-0016.
+**Decision:** An `escalate_to_human` control tool is always offered to the model.
+Refusals, truncation and exhausted budgets end the run `ESCALATED` with a reason.
+Only provider outages fail a run (`FAILED`, persisted, translated HTTP error).
+**Consequences:** API clients must handle `status: "escalated"`. Operators get a
+queue of escalations in the operations overview.
+
+### ADR-0023 — AI Operator role; status-only agent control
+**Status:** Accepted (3.0 M1)
+**Decision:** Add `OPERATOR`: member rights plus approving actions, activating
+and pausing agents (`agent:operate`), and viewing runs, operations and usage. It
+cannot author or reconfigure agents. `SUPER_ADMIN` can only be granted by a
+platform admin.

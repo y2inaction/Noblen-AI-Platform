@@ -2,6 +2,11 @@
 
 > **Status:** Living document. Started in Phase 0 (Discovery). Updated at the end
 > of every development phase (see `PROJECT_ROADMAP.md`).
+>
+> **Noblen AI 3.0 (AI Workforce & Business Operating Systems):** the platform built
+> in Phases 1–4 is the foundation of 3.0. Component-level, implementation-accurate
+> architecture docs live in [`docs/architecture/`](docs/architecture/overview.md), and
+> product positioning in [`docs/product/`](docs/product/noblen-ai-3.md).
 
 ## 1. Guiding principle
 

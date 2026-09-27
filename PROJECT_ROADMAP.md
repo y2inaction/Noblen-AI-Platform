@@ -8,6 +8,31 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 
 ---
 
+## Noblen AI 3.0 — milestones (supersede Phases 5–9 below)
+
+Noblen AI is becoming **AI Workforce & Business Operating Systems**. Phases 0–4 are
+the foundation and remain valid. The work after Phase 4 is re-sequenced into the
+milestones below; see [`docs/architecture/overview.md`](docs/architecture/overview.md).
+Phases 10–11 (hardening, deployment) still apply.
+
+- ✅ **M1: Controlled autonomy & AI operations.** Run traces (`agent_runs`,
+  `agent_run_steps`); escalation (`escalate_to_human`, and budgets, refusal and
+  truncation escalate); tool risk levels and the initiator permission ceiling;
+  approval modify, notes, correct multi-call and no-memory resume, and a kill switch;
+  gateway fallback chain; AI Operator role; `/runs` and `/operations/overview`;
+  SUPER_ADMIN grant fix.
+- ⬜ **M2: Execution hardening + first workforce.** Worker-queue execution,
+  approval notifications, separation of duties, agent templates, Executive AI and
+  Customer AI with their first real tools, and provider-native replay.
+- ⬜ **M3: Knowledge permissions.** Document/collection ACLs by user and role, and
+  structured retrieval.
+- ⬜ **M4: Memory.** User, agent and organizational memory stores.
+- ⬜ **M5: Workflow engine.** Triggers, steps, branching, retries, approvals, schedules.
+- ⬜ **M6: Integrations.** MCP adapter, credential references, email/calendar/CRM.
+- ⬜ **M7: Operating-environment UI.** Dashboard, workforce, approvals inbox, runs.
+
+---
+
 ## Phase 0 — Discovery ✅
 - [x] Inspect repository & git status (empty repo, fresh branch)
 - [x] Check runtime versions (Python 3.11, Node 22, Docker 29, Postgres 16)
@@ -77,16 +102,16 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 - [x] CI runs the Knowledge/RAG suite against real PostgreSQL + pgvector
 - [x] `docs/knowledge.md` + documentation updates
 
-## Phase 5 — Workflow Engine ⬜
+## Phase 5 — Workflow Engine (→ 3.0 M5)
 - [ ] Workflow models, triggers, nodes, conditions, execution engine, logs, scheduler
 
-## Phase 6 — Commercial Agents ⬜
+## Phase 6 — Commercial Agents (→ 3.0 M2 AI Workforce)
 - [ ] Customer Service, Sales, Content, Executive Assistant, Operations agents
 
-## Phase 7 — Integrations ⬜
+## Phase 7 — Integrations (→ 3.0 M6)
 - [ ] Email, Google Calendar, WhatsApp, Paystack, webhooks, CRM (interfaces + mocks first)
 
-## Phase 8 — Client Dashboard ⬜
+## Phase 8 — Client Dashboard (→ 3.0 M7)
 - [ ] Agents, conversations, leads, content, workflows, knowledge, tasks, analytics,
       integrations, billing, settings
 

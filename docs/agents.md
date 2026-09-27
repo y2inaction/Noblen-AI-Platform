@@ -4,6 +4,10 @@ The agent engine is a reusable framework; every commercial agent (Customer
 Service, Sales, Content, Executive Assistant, Operations) is a configuration on
 top of it, not a separate app.
 
+> **Noblen AI 3.0:** controlled autonomy (run traces, escalation, tool risk levels,
+> the initiator permission ceiling, approval modify/kill switch) is documented in
+> [`architecture/agents.md`](architecture/agents.md).
+>
 > **Phase 3 is implemented.** The reusable Agent Engine below is built and tested;
 > commercial agent packages come in Phase 6.
 
