@@ -6,6 +6,9 @@ QUEUED; workers claim the oldest one with `SELECT ... FOR UPDATE SKIP LOCKED`
 run, and no extra broker is required. Run state is persisted per step, so the
 trace, approvals and escalations behave exactly as for synchronous runs.
 
+Between runs the worker also does housekeeping: deleting long-term memories
+past their organization's retention period (M4).
+
 Run it with:  python -m app.agents.worker
 """
 
@@ -14,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import signal
+import time
 import uuid
 from collections.abc import Callable
 
@@ -26,6 +30,7 @@ from app.core.config import settings
 from app.core.logging import clear_context, configure_logging, get_logger
 from app.models.enums import RunStatus
 from app.models.run import AgentRun
+from app.services import memory_service
 
 logger = get_logger("agents.worker")
 
@@ -83,6 +88,20 @@ async def process_next(
     return run_id
 
 
+async def purge_expired_memories(session_factory: Callable[[], AsyncSession]) -> int:
+    """Delete memories past retention. Failures are logged, never fatal."""
+    try:
+        async with session_factory() as db:
+            removed = await memory_service.purge_expired(db)
+            await db.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("memory_purge_failed", error_type=type(exc).__name__)
+        return 0
+    if removed:
+        logger.info("memory_purged", removed=removed)
+    return removed
+
+
 async def run_worker(
     session_factory: Callable[[], AsyncSession],
     runtime: AgentRuntime,
@@ -91,7 +110,11 @@ async def run_worker(
     stop: asyncio.Event,
 ) -> None:
     logger.info("worker_started", poll_seconds=poll_seconds)
+    last_purge = float("-inf")
     while not stop.is_set():
+        if time.monotonic() - last_purge >= settings.MEMORY_PURGE_INTERVAL_SECONDS:
+            await purge_expired_memories(session_factory)
+            last_purge = time.monotonic()
         processed = await process_next(session_factory, runtime)
         if processed is None:
             with contextlib.suppress(TimeoutError):

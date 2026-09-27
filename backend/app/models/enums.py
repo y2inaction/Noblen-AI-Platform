@@ -104,6 +104,7 @@ class RunStepType(str, enum.Enum):
     TOOL_CALL = "TOOL_CALL"
     APPROVAL = "APPROVAL"
     ESCALATION = "ESCALATION"
+    MEMORY = "MEMORY"  # long-term memory loaded into the run's context (M4)
 
 
 class RunStepStatus(str, enum.Enum):
@@ -172,3 +173,10 @@ class DocumentStatus(str, enum.Enum):
 
 
 # ruff: noqa: UP042  (str+Enum kept intentionally for JSON/DB value compatibility)
+
+
+# ---- Memory (Noblen AI 3.0, M4) ----
+class MemoryScope(str, enum.Enum):
+    USER = "USER"  # private to one person (and agents they run)
+    AGENT = "AGENT"  # shared by everyone who uses one agent
+    ORGANIZATION = "ORGANIZATION"  # institutional, readable by all members

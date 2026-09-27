@@ -18,6 +18,7 @@ class OrganizationPublic(BaseModel):
     timezone: str
     locale: str
     require_independent_approval: bool = False
+    memory_retention_days: int | None = None
 
 
 class OrganizationUpdate(BaseModel):
@@ -27,6 +28,8 @@ class OrganizationUpdate(BaseModel):
     locale: str | None = Field(default=None, max_length=16)
     # Separation of duties for AI actions: initiators cannot approve their own runs.
     require_independent_approval: bool | None = None
+    # Days an unused long-term memory is kept; null keeps memories until deleted.
+    memory_retention_days: int | None = Field(default=None, ge=1, le=3650)
 
 
 class MemberPublic(BaseModel):

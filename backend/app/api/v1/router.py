@@ -11,6 +11,7 @@ from app.api.v1 import (
     auth,
     conversations,
     knowledge,
+    memory,
     organizations,
     runs,
     templates,
@@ -32,3 +33,4 @@ api_router.include_router(knowledge.router)
 api_router.include_router(runs.router)
 api_router.include_router(work.router)
 api_router.include_router(templates.router)
+api_router.include_router(memory.router)

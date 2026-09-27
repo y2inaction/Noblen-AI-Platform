@@ -78,6 +78,10 @@ class Permission:
     WORKFLOW_MANAGE = "workflow:manage"
     TASK_VIEW = "task:view"
     TASK_MANAGE = "task:manage"
+    # Memory (M4): read memories; write your own; manage agent/organization memory.
+    MEMORY_VIEW = "memory:view"
+    MEMORY_WRITE = "memory:write"
+    MEMORY_MANAGE = "memory:manage"
 
     # Analytics / audit / settings
     ANALYTICS_VIEW = "analytics:view"
@@ -109,6 +113,7 @@ _MEMBER_PERMISSIONS = _VIEW_PERMISSIONS + [
     Permission.CONVERSATION_CREATE,
     Permission.CONVERSATION_WRITE,
     Permission.KNOWLEDGE_SEARCH,
+    Permission.MEMORY_WRITE,
 ]
 
 # OPERATOR (AI Operator): supervises deployed agents — decides approvals,
@@ -138,6 +143,7 @@ _MANAGER_PERMISSIONS = _OPERATOR_PERMISSIONS + [
     Permission.KNOWLEDGE_INGEST,
     Permission.KNOWLEDGE_MANAGE_SOURCES,
     Permission.KNOWLEDGE_MANAGE_ACCESS,
+    Permission.MEMORY_MANAGE,
 ]
 
 # ADMIN: full organization administration.

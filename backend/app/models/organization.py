@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, String, false
+from sqlalchemy import Boolean, Integer, String, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.config import settings
@@ -32,6 +32,10 @@ class Organization(UUIDMixin, TimestampMixin, Base):
     require_independent_approval: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=false(), nullable=False
     )
+
+    # Memory retention (M4): long-term memories untouched for longer than this many
+    # days are ignored and purged. None keeps them until deleted.
+    memory_retention_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     members: Mapped[list[OrganizationMember]] = relationship(
         back_populates="organization", cascade="all, delete-orphan"

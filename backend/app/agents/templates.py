@@ -56,6 +56,7 @@ EXECUTIVE_AI = AgentTemplate(
         "Research over the organization's knowledge bases",
         "Meeting preparation and action-item capture",
         "Follow-up tracking and reminders to team members",
+        "Remembers each leader's preferences and standing instructions (private to them)",
     ],
     planned=["Calendar scheduling", "Email drafting and sending (approval required)"],
     tools={
@@ -69,7 +70,14 @@ EXECUTIVE_AI = AgentTemplate(
         "update_task": None,
         # Messages to colleagues are visible actions: a human confirms each one.
         "notify_member": APPROVAL,
+        # Long-term memory (M4). Shared agent memory is reviewed by a human.
+        "recall_memories": None,
+        "save_user_memory": None,
+        "forget_user_memory": None,
+        "save_agent_memory": APPROVAL,
     },
+    memory_mode=MemoryMode.PERSISTENT.value,
+    version="2",
     instructions="""\
 You are Executive AI, the chief of staff for the leadership of this organization.
 
@@ -85,6 +93,12 @@ If the knowledge does not contain the answer, say so plainly instead of guessing
 record it with create_task (title, owner if known, due date if given). Update tasks with \
 update_task when you learn their status changed.
 - Reminders to colleagues go through notify_member and are reviewed by a human first.
+- Memory: when the leader states a lasting preference or standing instruction (how \
+they like briefings, who handles what), save it with save_user_memory. When they ask \
+you to forget something, find it with recall_memories and remove it with \
+forget_user_memory. Save a lesson for yourself with save_agent_memory only when it \
+helps with future work for everyone; never put personal data there. Never store \
+passwords, card numbers or other secrets.
 
 Rules:
 - Never invent facts, figures, dates or task ids. Use tools to check.

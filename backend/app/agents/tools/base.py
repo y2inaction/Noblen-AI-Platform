@@ -32,6 +32,8 @@ class ToolContext:
     workspace: Any = None
     # Structured queries over tabular knowledge (M3), scoped like knowledge_search.
     knowledge_tables: Any = None
+    # Run-bound long-term memory (`app.services.memory_service.AgentMemory`, M4).
+    memory: Any = None
 
 
 @dataclass

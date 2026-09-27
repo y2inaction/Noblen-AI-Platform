@@ -52,6 +52,7 @@ from app.models.approval import Approval
 from app.models.enums import (
     AgentStatus,
     MembershipStatus,
+    MemoryMode,
     RunStatus,
     RunStepStatus,
     RunStepType,
@@ -64,8 +65,9 @@ from app.models.run import AgentRun, AgentRunStep
 from app.models.tool import AgentTool, Tool
 from app.models.user import User
 from app.rbac.permissions import Permission, role_has_permission
-from app.services import ai_usage_service, work_service
+from app.services import ai_usage_service, memory_service, work_service
 from app.services.audit_service import record_audit
+from app.services.memory_service import AgentMemory
 from app.services.work_service import AgentWorkspace
 
 logger = get_logger("agents.runtime")
@@ -156,6 +158,13 @@ class _RunState:
     bindings: dict[str, _ToolBinding]
     specs: list[ToolSpec]
     usage: UsageAccumulator = field(default_factory=UsageAccumulator)
+    # Long-term memory block appended to the system prompt (PERSISTENT mode, M4).
+    memory_context: str | None = None
+
+    @property
+    def system_prompt(self) -> str | None:
+        parts = [p for p in (self.version.system_instructions, self.memory_context) if p]
+        return "\n\n".join(parts) or None
 
 
 class AgentRuntime:
@@ -297,11 +306,38 @@ class AgentRuntime:
                 agent_id=agent.id,
                 user_id=run.initiated_by,
             ),
+            memory=AgentMemory(
+                db=db,
+                organization_id=run.organization_id,
+                agent_id=agent.id,
+                run_id=run.id,
+                user_id=run.initiated_by,
+            ),
         )
         bindings, specs = await self._load_tools(db, run.organization_id, agent.id)
-        return _RunState(
+        state = _RunState(
             run=run, agent=agent, version=version, context=context, bindings=bindings, specs=specs
         )
+        if self._memory_mode(state) == MemoryMode.PERSISTENT.value:
+            state.memory_context = await self._load_long_term_memory(db, state)
+        return state
+
+    @staticmethod
+    def _memory_mode(state: _RunState) -> str:
+        return str(state.version.memory_configuration.get("mode", state.agent.memory_mode))
+
+    async def _load_long_term_memory(self, db: AsyncSession, state: _RunState) -> str | None:
+        """PERSISTENT agents start each run with the memories the run may see."""
+        memories = await memory_service.context_for_run(
+            db, state.run.organization_id, state.run.initiated_by, state.agent.id
+        )
+        counts = {scope.lower(): len(items) for scope, items in memories.items()}
+        if any(counts.values()):
+            # The trace records how much was loaded, never the content.
+            await self._add_step(
+                db, state.run, RunStepType.MEMORY, RunStepStatus.SUCCEEDED, detail=counts
+            )
+        return memory_service.render_context(memories)
 
     async def _context_messages(self, db: AsyncSession, state: _RunState) -> list[Message]:
         return await load_run_context(
@@ -309,7 +345,7 @@ class AgentRuntime:
             state.run.organization_id,
             state.run.conversation_id,  # type: ignore[arg-type]
             run_start_sequence=state.run.context_start_sequence,
-            mode=state.version.memory_configuration.get("mode", state.agent.memory_mode),
+            mode=self._memory_mode(state),
             memory_configuration=state.version.memory_configuration,
         )
 
@@ -523,7 +559,7 @@ class AgentRuntime:
 
             request = GenerationRequest(
                 messages=messages,
-                system=version.system_instructions or None,
+                system=state.system_prompt,
                 provider=version.provider,
                 model=version.model,
                 fallbacks=list((version.configuration or {}).get("fallback_models", [])),

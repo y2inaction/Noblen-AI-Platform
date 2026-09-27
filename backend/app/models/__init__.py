@@ -30,6 +30,7 @@ from app.models.knowledge import (
     KnowledgeTableRow,
 )
 from app.models.membership import OrganizationMember
+from app.models.memory import Memory
 from app.models.organization import Organization
 from app.models.rbac import Permission, Role, role_permissions
 from app.models.run import AgentRun, AgentRunStep
@@ -73,4 +74,5 @@ __all__ = [
     "User",
     "Task",
     "Notification",
+    "Memory",
 ]

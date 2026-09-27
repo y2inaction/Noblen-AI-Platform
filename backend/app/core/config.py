@@ -94,6 +94,14 @@ class Settings(BaseSettings):
     # Background worker (python -m app.agents.worker): idle poll interval.
     AGENT_WORKER_POLL_SECONDS: float = 2.0
 
+    # ---- Long-term memory (Noblen AI 3.0, M4) ----
+    MEMORY_MAX_CHARS: int = 1000  # per memory
+    MEMORY_MAX_PER_SUBJECT: int = 200  # per person / agent / organization
+    # How many memories a PERSISTENT agent gets in its context, per scope.
+    MEMORY_CONTEXT_MAX_ITEMS: int = 20
+    # How often the worker deletes memories past their organization's retention.
+    MEMORY_PURGE_INTERVAL_SECONDS: float = 3600.0
+
     # ---- Knowledge + RAG (Phase 4) ----
     # Embedding model config. The vector column dimension is fixed platform-wide
     # (KNOWLEDGE_EMBEDDING_DIMENSION) and must match the configured model.

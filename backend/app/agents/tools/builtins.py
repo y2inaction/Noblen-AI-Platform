@@ -170,6 +170,7 @@ class QueryDataTableTool(ToolHandler):
 
 
 def _all_builtin_tools() -> list[ToolHandler]:
+    from app.agents.tools.memory_tools import MEMORY_TOOLS
     from app.agents.tools.work_tools import WORK_TOOLS
 
     return [
@@ -180,6 +181,7 @@ def _all_builtin_tools() -> list[ToolHandler]:
         ListDataTablesTool(),
         QueryDataTableTool(),
         *WORK_TOOLS,
+        *MEMORY_TOOLS,
     ]
 
 
