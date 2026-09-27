@@ -59,6 +59,33 @@ services:
     networks:
       - noblen
 
+  # Background agent worker: executes runs queued with {"background": true}.
+  # Same image and settings as the API; the database is the queue.
+  worker:
+    build:
+      context: ./backend
+    command: ["python", "-m", "app.agents.worker"]
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DEBUG: ${DEBUG:-true}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-noblen}:${POSTGRES_PASSWORD:-noblen}@postgres:5432/${POSTGRES_DB:-noblen}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SKIP_MIGRATIONS: "true"
+    healthcheck:
+      # No HTTP server here; healthy while the worker process is alive.
+      test: ["CMD-SHELL", "grep -qa app.agents.worker /proc/1/cmdline || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      backend:
+        condition: service_healthy   # migrations applied first
+    networks:
+      - noblen
+
   frontend:
     build:
       context: ./frontend

@@ -91,6 +91,8 @@ class Settings(BaseSettings):
     # Configuration/input size limits.
     AGENT_MAX_SYSTEM_INSTRUCTIONS_CHARS: int = 20000
     AGENT_MAX_INPUT_CHARS: int = 20000
+    # Background worker (python -m app.agents.worker): idle poll interval.
+    AGENT_WORKER_POLL_SECONDS: float = 2.0
 
     # ---- Knowledge + RAG (Phase 4) ----
     # Embedding model config. The vector column dimension is fixed platform-wide

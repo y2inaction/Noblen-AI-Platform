@@ -62,9 +62,10 @@ from app.models.organization import Organization
 from app.models.run import AgentRun, AgentRunStep
 from app.models.tool import AgentTool, Tool
 from app.models.user import User
-from app.rbac.permissions import role_has_permission
-from app.services import ai_usage_service
+from app.rbac.permissions import Permission, role_has_permission
+from app.services import ai_usage_service, work_service
 from app.services.audit_service import record_audit
+from app.services.work_service import AgentWorkspace
 
 logger = get_logger("agents.runtime")
 
@@ -131,7 +132,7 @@ class UsageAccumulator:
 
 @dataclass
 class RuntimeResult:
-    status: str  # completed | awaiting_approval | escalated
+    status: str  # completed | awaiting_approval | escalated | queued
     conversation_id: uuid.UUID
     agent_id: uuid.UUID
     agent_version_id: uuid.UUID
@@ -278,6 +279,13 @@ class AgentRuntime:
             knowledge_search=self._build_knowledge_search(
                 db, run.organization_id, agent.id, run.initiated_by
             ),
+            workspace=AgentWorkspace(
+                db=db,
+                organization_id=run.organization_id,
+                agent_id=agent.id,
+                run_id=run.id,
+                user_id=run.initiated_by,
+            ),
         )
         bindings, specs = await self._load_tools(db, run.organization_id, agent.id)
         return _RunState(
@@ -305,11 +313,17 @@ class AgentRuntime:
         conversation_id: uuid.UUID,
         input_message: str,
         version_id: uuid.UUID | None = None,
+        background: bool = False,
     ) -> RuntimeResult:
+        """Admit a task and run it now, or queue it for a worker (`background`)."""
         if len(input_message) > settings.AGENT_MAX_INPUT_CHARS:
             from app.core.exceptions import ValidationError
 
             raise ValidationError("Input message is too long.")
+        if background and version_id is not None:
+            from app.core.exceptions import ValidationError
+
+            raise ValidationError("Test-version executions cannot run in the background.")
 
         agent, version = await agent_registry.resolve_runnable_version(
             db, organization_id, agent_id, version_id=version_id
@@ -336,24 +350,57 @@ class AgentRuntime:
             agent_version_id=version.id,
             conversation_id=conversation_id,
             initiated_by=user_id,
-            status=RunStatus.RUNNING.value,
+            status=RunStatus.QUEUED.value if background else RunStatus.RUNNING.value,
             context_start_sequence=user_message.sequence,
-            started_at=_now(),
+            started_at=None if background else _now(),
         )
         db.add(run)
         await db.flush()
-        bind_context(agent_id=str(agent_id), agent_version_id=str(version.id), run_id=str(run.id))
         await record_audit(
             db,
-            action="agent.run_started",
+            action="agent.run_queued" if background else "agent.run_started",
             user_id=user_id,
             organization_id=organization_id,
             target_type="agent_run",
             target_id=str(run.id),
             metadata={"agent_id": str(agent_id), "agent_version_id": str(version.id)},
         )
+        if background:
+            return RuntimeResult(
+                status="queued",
+                conversation_id=conversation_id,
+                agent_id=agent_id,
+                agent_version_id=version.id,
+                run_id=run.id,
+            )
 
+        bind_context(agent_id=str(agent_id), agent_version_id=str(version.id), run_id=str(run.id))
         state = await self._build_state(db, run, agent, version)
+        return await self._loop(db, state, await self._context_messages(db, state))
+
+    async def process_queued(self, db: AsyncSession, run: AgentRun) -> RuntimeResult:
+        """Drive a run a worker has claimed (status RUNNING, not yet started)."""
+        agent, version = await agent_registry.resolve_runnable_version(
+            db, run.organization_id, run.agent_id, version_id=run.agent_version_id
+        )
+        run.status = RunStatus.RUNNING.value
+        run.started_at = run.started_at or _now()
+        bind_context(agent_id=str(agent.id), agent_version_id=str(version.id), run_id=str(run.id))
+        await record_audit(
+            db,
+            action="agent.run_started",
+            user_id=run.initiated_by,
+            organization_id=run.organization_id,
+            target_type="agent_run",
+            target_id=str(run.id),
+            metadata={"agent_id": str(agent.id), "queued": True},
+        )
+        state = await self._build_state(db, run, agent, version)
+        # Kill switch applies to queued work too.
+        if agent.status != AgentStatus.ACTIVE.value:
+            return await self._escalate(
+                db, state, f"The agent was {agent.status.lower()} before the task started."
+            )
         return await self._loop(db, state, await self._context_messages(db, state))
 
     async def resume_after_approval(
@@ -686,6 +733,15 @@ class AgentRuntime:
                 target_id=str(approval.id),
                 metadata={"tool": tool_call.name, "run_id": str(run.id)},
             )
+            await work_service.notify_permission_holders(
+                db,
+                run.organization_id,
+                Permission.AGENT_APPROVE_ACTIONS,
+                kind="approval_requested",
+                title=f"Approval needed: {state.agent.name} wants to use {tool_call.name}",
+                body=approval.reason,
+                link={"type": "approval", "id": str(approval.id)},
+            )
             logger.info(
                 "agent_tool_approval_required",
                 tool_name=tool_call.name,
@@ -988,6 +1044,16 @@ class AgentRuntime:
             content=text,
             metadata={"escalated": True},
             agent_version_id=state.version.id,
+        )
+        await work_service.notify_permission_holders(
+            db,
+            run.organization_id,
+            Permission.AGENT_APPROVE_ACTIONS,
+            kind="run_escalated",
+            title=f"Escalated: {state.agent.name} needs a human",
+            body=reason,
+            link={"type": "agent_run", "id": str(run.id)},
+            also=run.initiated_by,
         )
         logger.info("agent_run_escalated", reason=reason)
         return RuntimeResult(

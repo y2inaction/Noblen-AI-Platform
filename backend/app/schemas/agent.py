@@ -104,6 +104,9 @@ class ExecuteRequest(BaseModel):
     conversation_id: uuid.UUID | None = None
     message: str = Field(min_length=1, max_length=20000)
     version_id: uuid.UUID | None = None
+    # Queue the task for a background worker and return immediately (status
+    # "queued"); poll GET /runs/{run_id}. Not available for test versions.
+    background: bool = False
 
 
 class ExecutionMessage(BaseModel):
@@ -113,7 +116,7 @@ class ExecutionMessage(BaseModel):
 
 
 class ExecutionResponse(BaseModel):
-    status: str  # completed | awaiting_approval | escalated
+    status: str  # completed | awaiting_approval | escalated | queued
     conversation_id: uuid.UUID
     agent_id: uuid.UUID
     agent_version_id: uuid.UUID

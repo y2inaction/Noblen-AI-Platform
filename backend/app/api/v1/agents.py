@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents import conversations as conversation_service
@@ -205,6 +205,7 @@ async def activate_version(
 async def execute_agent(
     agent_id: uuid.UUID,
     body: ExecuteRequest,
+    response: Response,
     ctx: TenantContext = Depends(require_permission(Permission.AGENT_RUN)),
     runtime: AgentRuntime = Depends(get_agent_runtime),
     db: AsyncSession = Depends(get_db),
@@ -226,11 +227,14 @@ async def execute_agent(
             conversation_id=conversation_id,
             input_message=body.message,
             version_id=body.version_id,
+            background=body.background,
         )
     except AIError as err:
         # The runtime has already recorded the run as FAILED.
         raise translate_ai_error(err) from err
     await db.commit()
+    if result.status == "queued":
+        response.status_code = status.HTTP_202_ACCEPTED
     return ExecutionResponse(
         status=result.status,
         conversation_id=result.conversation_id,
