@@ -86,7 +86,7 @@ answers the remaining calls of the paused turn, and continues the loop.
    workforce tools, Executive AI and Customer AI templates, background worker,
    approval/escalation alerts, separation of duties. *Carried forward:*
    provider-native replay (needed only before defaulting to a model that thinks
-   by default) and automatic re-queueing of stale runs.
+   by default). Recovery of stale runs landed in Phase 10 hardening (ADR-0033).
 3. **M3: Knowledge permissions + structured retrieval** ✅ Knowledge-base and
    document ACLs by user and role, enforced inside the retrieval query; agents read
    as their initiator; CSV/XLSX tables with a declarative query spec and the

@@ -6,6 +6,9 @@ QUEUED; workers claim the oldest one with `SELECT ... FOR UPDATE SKIP LOCKED`
 run, and no extra broker is required. Run state is persisted per step, so the
 trace, approvals and escalations behave exactly as for synchronous runs.
 
+Periodically it also resolves runs that a crashed process left RUNNING
+(`recovery_service`: escalate, or re-queue a workflow at a safe point).
+
 When no agent run is queued, the worker advances workflows (M5): it queues due
 schedules, wakes runs whose agent step finished, and executes one workflow run.
 It also deletes long-term memories past their organization's retention (M4).
@@ -31,7 +34,7 @@ from app.core.config import settings
 from app.core.logging import clear_context, configure_logging, get_logger
 from app.models.enums import RunStatus
 from app.models.run import AgentRun
-from app.services import memory_service
+from app.services import memory_service, recovery_service
 from app.workflows import worker as workflow_worker
 
 logger = get_logger("agents.worker")
@@ -104,6 +107,18 @@ async def purge_expired_memories(session_factory: Callable[[], AsyncSession]) ->
     return removed
 
 
+async def recover_stale_runs(session_factory: Callable[[], AsyncSession]) -> dict[str, int]:
+    """Resolve runs a crashed process left RUNNING. Failures are logged, never fatal."""
+    try:
+        async with session_factory() as db:
+            result = await recovery_service.recover_stale_runs(db)
+            await db.commit()
+            return result
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("stale_run_recovery_failed", error_type=type(exc).__name__)
+        return {}
+
+
 async def run_worker(
     session_factory: Callable[[], AsyncSession],
     runtime: AgentRuntime,
@@ -112,8 +127,11 @@ async def run_worker(
     stop: asyncio.Event,
 ) -> None:
     logger.info("worker_started", poll_seconds=poll_seconds)
-    last_purge = float("-inf")
+    last_purge = last_recovery = float("-inf")
     while not stop.is_set():
+        if time.monotonic() - last_recovery >= settings.STALE_RUN_CHECK_INTERVAL_SECONDS:
+            await recover_stale_runs(session_factory)
+            last_recovery = time.monotonic()
         if time.monotonic() - last_purge >= settings.MEMORY_PURGE_INTERVAL_SECONDS:
             await purge_expired_memories(session_factory)
             last_purge = time.monotonic()

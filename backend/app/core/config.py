@@ -108,6 +108,13 @@ class Settings(BaseSettings):
     WORKFLOW_MAX_EVENT_DEPTH: int = 3  # workflow → event → workflow chains
     WORKFLOW_MIN_INTERVAL_MINUTES: int = 5  # shortest schedule
 
+    # ---- Run recovery (hardening) ----
+    # A RUNNING agent or workflow run whose row has not changed for this long is
+    # considered interrupted (worker or server died). Runtime budgets and
+    # provider/integration timeouts keep live runs far below this.
+    STALE_RUN_SECONDS: int = 900
+    STALE_RUN_CHECK_INTERVAL_SECONDS: float = 60.0
+
     # ---- Integrations (Noblen AI 3.0, M6) ----
     # Fernet keys (comma-separated, newest first) that encrypt integration secrets.
     # Required in production. Outside production a key is derived from JWT_SECRET.

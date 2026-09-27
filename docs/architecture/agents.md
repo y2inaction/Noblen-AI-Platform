@@ -128,8 +128,10 @@ setting is off by default, so a single-person organization can still work.
 
 ## Limitations
 
-- A worker that dies mid-run leaves the run `RUNNING`. Re-queueing stale runs
-  automatically is not implemented yet.
+- Interrupted runs are not resumed automatically. Since the Phase 10 hardening, a
+  run left `RUNNING` by a crashed worker or server is escalated to a person once
+  it has been idle for `STALE_RUN_SECONDS`, because re-running it could repeat a
+  side effect. See ADR-0033.
 - There are no email or chat delivery channels for notifications yet (in-app only).
 - Model turns are replayed from neutral messages. Provider-native content (for
   example Claude thinking blocks) is not preserved yet. This is fine for the

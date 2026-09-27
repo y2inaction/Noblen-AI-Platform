@@ -6,6 +6,22 @@ and the project uses Conventional Commits.
 
 ## [Unreleased]
 
+### Security & hardening — Phase 10 (in progress)
+- **Frontend dependencies:** Next.js 14.2 → 16.3. The 14.x line had a critical and
+  a high advisory, including its bundled postcss; `npm audit --omit=dev` now finds
+  0 vulnerabilities. ESLint 9 flat config. Effects no longer set state
+  synchronously (session via `useSyncExternalStore`).
+- **Nonce-based Content-Security-Policy** (`frontend/src/proxy.ts`): no
+  `'unsafe-inline'` scripts. Verified in a browser that an injected inline script
+  is blocked.
+- **Stale-run recovery** (ADR-0033): the worker escalates agent runs left `RUNNING`
+  by a crashed worker or server, and re-queues workflow runs only at safe points,
+  never repeating side effects. New settings `STALE_RUN_SECONDS` and
+  `STALE_RUN_CHECK_INTERVAL_SECONDS`; audit events `agent.run_recovered` and
+  `workflow.run_recovered`.
+- Backend dependencies audited with pip-audit: no known vulnerabilities in
+  application dependencies.
+
 ### Added — Noblen AI 3.0, Milestone 7 (Operating-environment UI)
 - **Web UI** (Next.js, no new runtime dependencies) over the public API:
   - dashboard with the live 7-day operations overview, recent runs, escalations

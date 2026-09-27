@@ -263,8 +263,8 @@ attribution cannot be chosen by model arguments.
 `SELECT … FOR UPDATE SKIP LOCKED`. The worker is the backend image with a different
 command. No new broker is introduced (Redis stays for rate limiting and caching).
 **Consequences:** Durable, horizontally scalable execution with no new infrastructure.
-Throughput is bounded by polling (fine at current scale). A crashed worker leaves
-its run `RUNNING` until stale-run recovery is added.
+Throughput is bounded by polling (fine at current scale). Runs a crashed worker
+leaves `RUNNING` are handled by stale-run recovery (ADR-0033).
 
 ### ADR-0026 — Reference agents are templates, not code
 **Status:** Accepted (3.0 M2)
@@ -354,3 +354,17 @@ ceiling, approval and trace. Results are returned as untrusted data.
 **Consequences:** Any MCP server can extend an organization's agents without code,
 under the same controls as built-in tools. Tools removed remotely are disabled on
 the next sync. MCP tools are not yet available as workflow steps.
+
+### ADR-0033 — Interrupted runs are escalated, not blindly retried
+**Status:** Accepted (3.0 hardening). Completes ADR-0025.
+**Decision:** The worker periodically looks for agent and workflow runs that are
+`RUNNING` but whose row has not changed for `STALE_RUN_SECONDS` (default 15 minutes,
+far above any live run's budgets and timeouts). Such a run was interrupted. Agent
+runs are escalated to a person, with a trace step, notifications and an audit
+entry. Workflow runs are re-queued only when no step was in flight, or the
+in-flight step has no external effect (condition, approval request). Otherwise they
+are escalated. Claims use `FOR UPDATE SKIP LOCKED`.
+**Consequences:** No run is stuck forever, and recovery never sends an email twice
+or creates a duplicate task. The cost is human attention after a crash, and up to
+`STALE_RUN_SECONDS` of delay before recovery. Resuming agent runs exactly (per-tool
+idempotency keys) is left for later.

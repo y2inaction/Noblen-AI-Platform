@@ -106,6 +106,9 @@ organization.
   arguments, a failed tool result, a missing reference, an agent escalation. After
   that, `on_failure` applies. `escalate` ends the run `ESCALATED` and notifies
   operators (`agent:operate`) and the person it acts for.
+- **Crash recovery.** A run left `RUNNING` by a crashed worker is re-queued when
+  it stopped between steps or during a condition or approval step. If it stopped
+  mid-agent or mid-tool, it is escalated, never re-executed (ADR-0033).
 - **Kill switch.** Pausing or archiving a workflow stops its triggers. Queued and
   waiting runs are cancelled when next picked up (test runs excepted).
   `POST /workflow-runs/{id}/cancel` cancels a queued or waiting run.

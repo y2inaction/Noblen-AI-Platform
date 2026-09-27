@@ -25,7 +25,7 @@ Phases 10–11 (hardening, deployment) still apply.
   (+ APIs); workforce tools (`create_task`, `list_tasks`, `update_task`,
   `notify_member`); Executive AI and Customer AI templates; background execution
   on a DB-queue worker; approval and escalation alerts; separation of duties.
-  *Carried forward:* provider-native replay and stale-run re-queueing.
+  *Carried forward:* provider-native replay. (Stale-run recovery landed in Phase 10.)
 - ✅ **M3: Knowledge permissions + structured retrieval.** Knowledge-base and
   document visibility with user/role grants, enforced in SQL before ranking;
   agents read as their initiator; archived bases unsearchable; CSV/XLSX tables
