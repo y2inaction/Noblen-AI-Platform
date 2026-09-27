@@ -1,6 +1,7 @@
 # ADR-0035 — Workflow and run content is visible to its participants, not the whole organization
 
-**Status:** Proposed (security review, 2026-09). Not implemented. **Production-blocking.**
+**Status:** Implemented (participant rule, §1–§4). Proven by `tests/security/test_run_content_visibility.py`:
+14 tests that failed before the fix and pass after it. §5, widening through provenance, waits for ADR-0037.
 **Relates to:** ADR-0029 (memory scopes), ADR-0030 (workflows), M3 knowledge ACLs,
 the conversation-privacy fix (commit 3d9571f). The model is in ADR-0036; provenance is
 in ADR-0037.
@@ -86,11 +87,13 @@ content server-side, in the service layer. Hiding it in the UI is not enough.
      such API today, and none is added.
 
    Everyone else gets the metadata with the content fields **omitted**, not blanked
-   with fake values. A `content_withheld: true` flag and a reason code are added.
+   with fake values. A `content_withheld: true` flag is added (no reason code was
+   needed: the only reason is "not the run's person").
 3. **Approvers see exactly the approval request.** A person deciding an approval step
    sees that step's rendered `title` / `details`, because governance requires it. They
-   do not see the rest of the run's context. The notification body carries only the
-   title and a link (no details). Once ADR-0037 lands, the approval view shows whether
+   do not see the rest of the run's context. The approval notification goes only to
+   approvers, so it keeps the request's title and details (refined during
+   implementation). Once ADR-0037 lands, the approval view shows whether
    the request derives from sources the approver cannot read.
 4. **One authorization function per resource**, used by every path that returns content:
    - `workflow_run_content_visible(run, viewer)`, used by the API, the UI data, exports
@@ -119,3 +122,64 @@ content server-side, in the service layer. Hiding it in the UI is not enough.
 - The UI `workflow-runs/[id]` and `runs/[id]` pages must handle `content_withheld`.
 - Existing stored outputs need no migration. The rule applies on read.
 - The regression test must fail before the fix (ADR test plan, `authorization-test-plan.md`).
+
+## Implementation (2026-09)
+
+**Rule.** It lives in one module, `backend/app/rbac/visibility.py`:
+- `Viewer`, built from `TenantContext.viewer`;
+- `sees_run_content(viewer, acting_user_id)`, the participant rule;
+- `sees_approval_requests(viewer)`, which requires `agent:approve_actions`;
+- presenters for workflow runs, agent runs, execution results and escalation
+  reasons.
+
+Endpoints call the presenters and never choose fields themselves. There is no
+per-endpoint `if user.id != run.initiated_by`. Platform superusers and admins get
+no content bypass.
+
+**Field classification** (ADR-0036 levels):
+
+| Field | Level | Who sees it |
+|---|---|---|
+| ids, `status`, timings, `current_step`, attempts, `steps_executed`, `depth`, step ids/types/statuses, `agent_run_id`, `decision`, `decided_by`, `error_code`, tokens, cost, `initiated_by` | T (metadata) | `workflow:view` / `run:view` |
+| `trigger_detail` | T (metadata) | Holds only `{"test"}`, `{"webhook": true}`, `{"event"}` or `{"scheduled_for"}`. Payloads live in `input`. |
+| `input` (manual input, webhook and event payloads) | P | the run's person |
+| `context` | P | the run's person |
+| step `output` | P | the run's person |
+| step `output` of an approval request (approval steps; tool steps `WAITING`/`REJECTED`) | R | the run's person and `agent:approve_actions` |
+| workflow run and step `error`, `decision_note` | P (R for approval requests) | as above |
+| agent run `escalation_reason`; escalation step `detail.reason` | P | the run's person |
+| agent run step `error` of a **failed tool call** (tool-written, or quotes rejected arguments) | P | the run's person |
+| agent run step `error` of denials, rejections, paused agents, model errors (platform-written) | T (metadata) | `run:view` |
+| approval `request_payload` | R | `agent:approve_actions` (what they decide; unchanged) |
+| approval-decision `execution.message` / `execution.escalation_reason` | P | the run's person; the approver gets status and ids |
+| `operations/overview` `recent_escalations[].reason` | P | the run's person |
+| `run_escalated` / `workflow_escalated` notification body | P | the run's person; operators get the title, link and a generic body |
+| `workflow_approval_requested` notification title/body | R | approvers, the same people who see the request |
+| recovery notification bodies | T | fixed platform text |
+
+**Endpoints protected:**
+- `GET /workflow-runs`, `GET /workflow-runs/{id}`;
+- `POST /workflows/{id}/runs`, `POST /workflow-runs/{id}/approve|reject|cancel`
+  (their response bodies);
+- `GET /runs`, `GET /runs/{id}`;
+- `GET /operations/overview`;
+- `POST /approvals/{id}/approve|modify|reject` (the `execution` payload);
+- notifications from agent escalations and workflow step escalations.
+
+**Frontend.** `content_withheld` is typed, and the workflow-run and agent-run pages
+explain the withheld content. The UI only mirrors the server.
+
+**Remaining paths (known, accepted or scheduled):**
+1. **Publication sinks.** An agent or workflow tool step can publish private content
+   under the acting person's authority. Sinks are `create_task` / `update_task`
+   (organization-visible tasks), outbound email and webhooks (HIGH risk, approval
+   required), and AGENT/ORG memory (approval required). This is by design (ADR-0036
+   rule 3). Attribution through `source_run_id` and provenance comes with ADR-0037.
+2. **Approvers see the request they decide.** A workflow approval step can template
+   private output into its `title`/`details`, and an agent's gated tool call carries
+   its arguments. The approver sees them. This is required for governance. ADR-0037
+   adds a warning when the request derives from sources the approver cannot read.
+3. **Trace `argument_keys`** are model-chosen names. Values are never stored. Low risk.
+4. **The rule is conservative.** Managers do not see outputs of others' runs even
+   when those derive only from organization-level data. ADR-0037 widens this safely.
+5. **No database-level enforcement (RLS) yet** (ADR-0034).

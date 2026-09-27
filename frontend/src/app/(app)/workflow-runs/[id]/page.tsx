@@ -9,6 +9,15 @@ import { short, titleCase, when } from "@/lib/format";
 import { useAction, useApi } from "@/lib/hooks";
 import type { WorkflowRunDetail } from "@/lib/types";
 
+function WithheldNotice() {
+  return (
+    <p className="mb-4 rounded-lg bg-slate-100 px-4 py-3 text-sm text-slate-700">
+      This run acted for another person. Its input, outputs and error details are visible only to them;
+      approvers see the requests they decide.
+    </p>
+  );
+}
+
 export default function WorkflowRunPage() {
   const { id } = useParams<{ id: string }>();
   const { can } = useSession();
@@ -43,6 +52,7 @@ export default function WorkflowRunPage() {
         }
       />
       <ErrorBanner message={action.error ?? (r.error ? `${r.error_code}: ${r.error}` : null)} />
+      {r.content_withheld && <WithheldNotice />}
       {r.next_attempt_at && r.status === "QUEUED" && (
         <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
           Retrying step <code>{r.current_step}</code> (attempt {r.current_attempt}) {when(r.next_attempt_at)}.
@@ -83,7 +93,7 @@ export default function WorkflowRunPage() {
           </ol>
         </Card>
         <Card title="Input">
-          <JsonView value={r.input} />
+          {r.input ? <JsonView value={r.input} /> : <p className="text-sm text-slate-500">Withheld.</p>}
         </Card>
       </div>
     </>

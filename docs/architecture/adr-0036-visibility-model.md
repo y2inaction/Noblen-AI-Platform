@@ -77,17 +77,23 @@ These are the levels as they should be. **Bold** marks where the code differs to
 | Knowledge bases, documents, chunks, tables | T or X | T or X | ORGANIZATION visibility is T. RESTRICTED is X (grants to USER or ROLE), and the creator is O. `knowledge:read_all` (ADMIN, and platform superusers through `resolve_principal`) is the one documented row-widening permission. |
 | Agents, agent versions, tool bindings | T (`agent:view`) | T | Definitions are organization-shared by design. System instructions are visible to `agent:view`. |
 | Workflows, workflow versions | T (`workflow:view`) | T | Definitions only. Runs are separate. |
-| Agent runs (`agent_runs`, `agent_run_steps`) | T (`run:view`) | **P** | Content is `escalation_reason` and failed-tool error text. Step `detail` holds argument *keys* only, never values. |
-| Workflow runs and step runs | T (`workflow:view`) | **P**; approval requests: R (`agent:approve_actions`) | Content is `input`, `context`, step `output`, and free-text `error` and `decision_note`. `trigger_detail` is metadata (`{"test"}`, `{"webhook": true}`, `{"event"}`, `{"scheduled_for"}`). |
+| Agent runs (`agent_runs`, `agent_run_steps`) | T (`run:view`) | P (ADR-0035, implemented) | Content is `escalation_reason`, the escalation step's `detail.reason`, and the error text of *failed tool calls*. Platform-written step errors (denials, rejections, a paused agent, model error codes) are metadata. Step `detail` holds argument *keys* only, never values. |
+| Workflow runs and step runs | T (`workflow:view`) | P (ADR-0035, implemented); approval requests: R (`agent:approve_actions`) | Content is `input`, `context`, step `output`, and free-text `error` and `decision_note`. `trigger_detail` is metadata (`{"test"}`, `{"webhook": true}`, `{"event"}`, `{"scheduled_for"}`). |
 | Tool executions | via their run | via their run | There is no separate `ToolExecution` table. An execution is a trace step (metadata), a tool message in the run's conversation (P), an audit entry (R) and, when gated, an approval (R). |
 | Approvals | R (`agent:approve_actions`) | R | `request_payload` is what the approver decides, so it must be visible to them. The resumed run's answer is not shown to the approver: **P**. |
 | Tasks | T (`task:view`) | T | A task is a publication. When an agent or workflow creates one from private context, the acting person published it. Provenance comes with ADR-0037. |
-| Notifications | O (recipient) | O | Bodies carrying run content go only to the run's person: **P**. |
+| Notifications | O (recipient) | O | Bodies carrying run content (escalation reasons, step errors) go only to the run's person, through `participant_body`. Workflow approval requests go to approvers, who may see the request (R). |
 | Integration connections | T (`integration:view`) | T for `config`; **never** for secrets | Secrets are encrypted at rest and returned only as masked "is set" markers. No level can read them through the API. |
 | Imported MCP tools | T (`tool:view`) | T | Organization-owned catalogue rows (ADR-0032). |
 | Audit log | R (`audit:view`, ADMIN) | R | There is no read API yet. Entries hold actions, ids, tool names and denial reasons, never arguments or outputs. Keep it that way. |
 | Usage and cost | R (`ai:view_usage`, `operations:view`) | — | Aggregates only. |
 | Operations overview | R (`operations:view`) | P for escalation reasons | Reasons are shown only to each run's person. |
+
+**Refinement found while implementing ADR-0035.** "Content" is decided by *who wrote
+the text*, not by the field name. Text written by the platform stays metadata: policy
+denials, rejections, error codes. Text written by a tool or the model, or text that
+quotes run input, is content. The same `error` column can therefore be metadata on
+one row and content on another.
 
 ## Mapping existing code onto the model (no renames required)
 
@@ -96,7 +102,7 @@ These are the levels as they should be. **Bold** marks where the code differs to
 | `tenant_scoped` | `app/db/tenant.py` | T |
 | `require_permission` | `app/api/deps.py` | R |
 | `conversations.readable_by` | `app/agents/conversations.py` | P |
-| *new* `workflow_run_content_visible` / `agent_run_content_visible` | ADR-0035 | P |
+| `rbac.visibility.sees_run_content` and its presenters | `app/rbac/visibility.py` (ADR-0035) | P |
 | `memory_service._visible_to_member` | USER branch | O |
 | `knowledge_base_readable` / `document_readable` | `app/knowledge/access.py` | X (includes O via `created_by`) |
 | `system_session()` (new, ADR-0034) | — | S |

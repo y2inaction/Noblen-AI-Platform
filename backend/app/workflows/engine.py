@@ -511,9 +511,10 @@ class WorkflowEngine:
                 Permission.AGENT_OPERATE,
                 kind="workflow_escalated",
                 title=f"Workflow needs attention: {workflow.name}"[:255],
-                body=f"Step '{step.id}' failed: {outcome.error}",
+                body=f"Step '{step.id}' failed.",
                 link={"type": "workflow_run", "id": str(run.id)},
                 also=run.initiated_by,
+                participant_body=f"Step '{step.id}' failed: {outcome.error}",
             )
         else:
             await self._finish(db, run, WorkflowRunStatus.FAILED, "step_failed", outcome.error)

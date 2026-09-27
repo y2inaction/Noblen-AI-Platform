@@ -141,9 +141,21 @@ Retention is set with `PATCH /organizations/current` `{"memory_retention_days": 
 | GET/POST | `/workflows/{id}/versions` (`{definition}`) | `workflow:view` / `workflow:manage` |
 | POST | `/workflows/{id}/activate` (`{version_id?}`) · `/workflows/{id}/pause` | `workflow:manage` |
 | POST | `/workflows/{id}/runs` (`{input, version_id?}`), returns **202** | `workflow:run` (`version_id` test runs: `workflow:manage`) |
-| GET | `/workflow-runs?workflow_id=&status=` · `/workflow-runs/{id}` (with step trace) | `workflow:view` |
+| GET | `/workflow-runs?workflow_id=&status=` · `/workflow-runs/{id}` (with step trace) | `workflow:view`; content only for the run's person (below) |
 | POST | `/workflow-runs/{id}/approve` · `/reject` (`{note?}`) | `agent:approve_actions` |
 | POST | `/workflow-runs/{id}/cancel` | `agent:operate` |
+
+**Run content (ADR-0035).**
+- Visible to everyone with the view permission: status, steps and their statuses,
+  timings, error codes and the initiator.
+- Visible only to the person the run acts for: `input`, `context`, step `output`,
+  and `error` / `decision_note` text.
+- Everyone else gets `null` for those fields and `content_withheld: true`. Approvers
+  (`agent:approve_actions`) still see the output of approval requests (approval
+  steps, and tool steps waiting for or rejected at approval).
+- The same rule covers `/runs` (`escalation_reason`, failed-tool `error`),
+  `/operations/overview` (`recent_escalations[].reason`) and the `execution`
+  payload of approval decisions.
 
 Runs execute on the worker (`python -m app.agents.worker`). See
 [`architecture/workflows.md`](architecture/workflows.md) for the definition format.

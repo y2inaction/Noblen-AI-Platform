@@ -21,6 +21,7 @@ from app.db.session import get_db
 from app.models.organization import Organization
 from app.models.tool import Tool
 from app.rbac.permissions import Permission
+from app.rbac.visibility import present_execution
 from app.schemas.approval import (
     ApprovalDecisionIn,
     ApprovalDecisionOut,
@@ -127,6 +128,9 @@ async def _decide(
         for key in ("conversation_id", "agent_id", "agent_version_id", "approval_id", "run_id"):
             if execution.get(key) is not None:
                 execution[key] = str(execution[key])
+        # The resumed run acts for its initiator; the approver sees its status,
+        # not the agent's answer (ADR-0035).
+        execution = present_execution(execution, approval.requested_by, ctx.viewer)
     await db.commit()
     await db.refresh(approval)
     return ApprovalDecisionOut(approval=ApprovalOut.model_validate(approval), execution=execution)

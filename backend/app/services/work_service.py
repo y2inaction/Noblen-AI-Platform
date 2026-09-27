@@ -280,8 +280,13 @@ async def notify_permission_holders(
     body: str | None = None,
     link: dict[str, Any] | None = None,
     also: uuid.UUID | None = None,
+    participant_body: str | None = None,
 ) -> int:
-    """Notify every active member holding `permission` (plus `also`, once)."""
+    """Notify every active member holding `permission` (plus `also`, once).
+
+    `participant_body` is run content (ADR-0035): only `also`, the person the run
+    acts for, receives it; everyone else gets `body`.
+    """
     recipients = set(await members_with_permission(db, organization_id, permission))
     if also is not None:
         recipients.add(also)
@@ -292,7 +297,7 @@ async def notify_permission_holders(
             recipient_id=recipient,
             kind=kind,
             title=title,
-            body=body,
+            body=participant_body if participant_body is not None and recipient == also else body,
             link=link,
         )
     return len(recipients)

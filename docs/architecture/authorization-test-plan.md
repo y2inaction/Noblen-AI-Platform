@@ -1,6 +1,8 @@
 # Authorization test plan (for ADR-0034 – ADR-0037)
 
-**Status:** Proposed. These tests do not exist yet unless marked *(exists)*. Each new
+**Status:** Partly implemented. These tests do not exist yet unless marked *(exists)*.
+ADR-0035 is covered by `tests/security/test_run_content_visibility.py` (14 tests, each
+of which failed before the fix). Each new
 test must **fail before its fix**; the PR records the failing run. The tests reuse the
 existing fixtures: `tests/conftest.py` (users, orgs, roles),
 `tests/agents/conftest.py` (scripted provider), and
@@ -61,10 +63,10 @@ The same restricted document (readable by A only, canary inside) is used in ever
 | Direct search / get | B (MEMBER) | not found *(exists, M3)* |
 | Agent run by B | B | the agent cannot retrieve it *(exists)* |
 | Agent run by A → conversation | B | 404 *(exists)* |
-| **Agent run by A → `GET /runs/{id}`** | B (VIEWER) | metadata only; the canary is absent in `escalation_reason` / errors |
-| **Workflow run by A (agent step) → `GET /workflow-runs/{id}`** | B (VIEWER, MEMBER, MANAGER, ADMIN) | the canary is absent; `content_withheld: true` — *the ADR-0035 regression test* |
-| Same, viewer = A | A | the canary is present |
-| **Workflow step output templated into an approval step** | approver C | C sees only the approval request, not the rest of the context; the notification body has no details |
+| **Agent run by A → `GET /runs/{id}`** | B (VIEWER, MEMBER, MANAGER, ADMIN) | metadata only; the canary is absent in `escalation_reason` / errors *(exists)* |
+| **Workflow run by A (agent step) → `GET /workflow-runs/{id}`** | B (VIEWER, MEMBER, MANAGER, ADMIN) | the canary is absent; `content_withheld: true` — *the ADR-0035 regression test (exists)* |
+| Same, viewer = A | A | the canary is present *(exists)* |
+| **Workflow step output next to an approval step** | approver C | C sees only the approval request, not the rest of the context *(exists)*. Refined during implementation: approvers keep the notification body, since they may see the request. |
 | **Tool step (`create_task`) from A's restricted output** | B | the task is visible (publication), with `source_run_id` set and the audit event marked `restricted: true` |
 | **Run trace steps** | B | argument keys only, never values *(exists)* |
 | After ADR-0037: B is granted the document | B | the workflow output becomes visible (derived visibility) |

@@ -52,6 +52,9 @@ class RunOut(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
     created_at: datetime
+    # ADR-0035: escalation_reason and step errors are withheld from everyone but
+    # the person the run acts for.
+    content_withheld: bool = False
 
 
 class RunDetailOut(RunOut):

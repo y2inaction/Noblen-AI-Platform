@@ -45,7 +45,10 @@ model, tokens, latency, finish reason, tool risk level and argument *keys*, but 
 prompt or response text. Content stays in the conversation (see `AI_LOG_PROMPTS`).
 
 `ExecutionResponse` and the approval `execution` payload now include `run_id` and
-`escalation_reason`.
+`escalation_reason`. The reason and the agent's answer are run content (ADR-0035). An
+approver who is not the run's person gets `execution.message` and
+`escalation_reason` as `null`, with `content_withheld: true`. The same applies to
+`escalation_reason` and failed-tool errors on `/runs` and `/runs/{id}`.
 
 ## Tool authorization: an intersection
 

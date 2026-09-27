@@ -20,6 +20,7 @@ from app.models.ai_usage import AIUsageRecord
 from app.models.approval import Approval
 from app.models.enums import ApprovalStatus, RunStatus, RunStepStatus, RunStepType
 from app.models.run import AgentRun, AgentRunStep
+from app.rbac.visibility import Viewer, present_escalation_reason
 from app.schemas.run import OperationsOverviewOut
 
 
@@ -73,7 +74,7 @@ def _rate(part: int, whole: int) -> float | None:
 
 
 async def overview(
-    db: AsyncSession, organization_id: uuid.UUID, *, window_days: int = 30
+    db: AsyncSession, organization_id: uuid.UUID, viewer: Viewer, *, window_days: int = 30
 ) -> OperationsOverviewOut:
     org = organization_id
     since = datetime.now(UTC) - timedelta(days=window_days)
@@ -140,7 +141,13 @@ async def overview(
     ]
 
     escalations = await db.execute(
-        select(AgentRun.id, AgentRun.agent_id, AgentRun.escalation_reason, AgentRun.completed_at)
+        select(
+            AgentRun.id,
+            AgentRun.agent_id,
+            AgentRun.escalation_reason,
+            AgentRun.completed_at,
+            AgentRun.initiated_by,
+        )
         .where(
             AgentRun.organization_id == org,
             AgentRun.status == RunStatus.ESCALATED.value,
@@ -176,9 +183,10 @@ async def overview(
             {
                 "run_id": str(run_id),
                 "agent_id": str(agent_id),
-                "reason": reason,
+                # The model's reason is run content (ADR-0035).
+                "reason": present_escalation_reason(reason, initiated_by, viewer),
                 "at": at.isoformat() if at else None,
             }
-            for run_id, agent_id, reason, at in escalations.tuples().all()
+            for run_id, agent_id, reason, at, initiated_by in escalations.tuples().all()
         ],
     )

@@ -384,7 +384,8 @@ requires new database roles and connection strings, a startup role check, and a
 PostgreSQL-only test suite. Rollout is staged: enable first, then `FORCE`.
 
 ### ADR-0035 — Workflow and run content is visible to its participants
-**Status:** Proposed (security review, 2026-09). Not implemented. Production-blocking.
+**Status:** Accepted and implemented (participant rule; `app/rbac/visibility.py`,
+`tests/security/`). Widening through provenance waits for ADR-0037.
 Details: [`docs/architecture/adr-0035-workflow-output-authorization.md`](docs/architecture/adr-0035-workflow-output-authorization.md).
 **Decision:** Workflow and agent runs split metadata (organization-visible under
 `:view`) from content (`input`, `context`, step outputs, free-text reasons), which is

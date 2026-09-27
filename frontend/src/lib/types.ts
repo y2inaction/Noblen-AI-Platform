@@ -90,6 +90,8 @@ export interface Run {
   started_at: string | null;
   completed_at: string | null;
   created_at: string;
+  /** True when the server withheld this run's content from you (ADR-0035). */
+  content_withheld: boolean;
 }
 
 export interface RunStep {
@@ -163,7 +165,8 @@ export interface WorkflowRun {
   status: string;
   trigger_type: string;
   trigger_detail: Record<string, unknown>;
-  input: Record<string, unknown>;
+  /** Null when withheld: only the person the run acts for sees its content (ADR-0035). */
+  input: Record<string, unknown> | null;
   current_step: string | null;
   current_attempt: number;
   steps_executed: number;
@@ -174,10 +177,11 @@ export interface WorkflowRun {
   started_at: string | null;
   finished_at: string | null;
   created_at: string;
+  content_withheld: boolean;
 }
 
 export interface WorkflowRunDetail extends WorkflowRun {
-  context: Record<string, unknown>;
+  context: Record<string, unknown> | null;
   steps: WorkflowStepRun[];
 }
 

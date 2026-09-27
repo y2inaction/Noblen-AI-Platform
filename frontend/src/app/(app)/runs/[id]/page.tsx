@@ -43,6 +43,11 @@ export default function RunTracePage() {
           </>
         }
       />
+      {r.content_withheld && (
+        <p className="mb-4 rounded-lg bg-slate-100 px-4 py-3 text-sm text-slate-700">
+          This run acted for another person. Its escalation reason and tool error details are visible only to them.
+        </p>
+      )}
       {r.escalation_reason && (
         <p className="mb-4 rounded-lg bg-orange-50 px-4 py-3 text-sm text-orange-800">
           Escalated: {r.escalation_reason}

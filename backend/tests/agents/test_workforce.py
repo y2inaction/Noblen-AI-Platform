@@ -246,9 +246,12 @@ async def test_customer_ai_escalates_refund_demands_and_alerts_operators(
     )
     body = (await _execute(client, owner, agent["id"], "I want my money back NOW")).json()
     assert body["status"] == "escalated"
-    for person in (op, owner):  # operators and the initiator
-        notes = await _notifications(session_factory, person["user"]["id"])
-        assert any(n.kind == "run_escalated" and "order 1182" in (n.body or "") for n in notes)
+    # Operators are alerted; the model's reason is run content (ADR-0035), so only
+    # the person the run acts for receives it.
+    op_notes = await _notifications(session_factory, op["user"]["id"])
+    assert any(n.kind == "run_escalated" and n.body is None for n in op_notes)
+    owner_notes = await _notifications(session_factory, owner["user"]["id"])
+    assert any(n.kind == "run_escalated" and "order 1182" in (n.body or "") for n in owner_notes)
 
 
 async def test_customer_ai_logs_a_follow_up_task(client, wf, provider, session_factory):

@@ -34,6 +34,24 @@ and the project uses Conventional Commits.
   `/%09/evil.com` or `/%0A/evil.com` passed a prefix check and sent the person to
   another site right after a real sign-in. The target is now resolved as a URL and
   must be on the same origin.
+- **Run content is private to the person the run acts for** (ADR-0035,
+  **behavior change**). Before, any member with `workflow:view` or `run:view`
+  (VIEWER included) could read another person's workflow step outputs, run
+  `context`, `input` (including webhook payloads), escalation reasons and failed-tool
+  errors. These can quote the initiator's private memories and restricted
+  knowledge.
+  - Metadata stays organization-visible: ids, status, timings, step ids and
+    statuses, error codes, cost, and who initiated the run.
+  - Content fields are returned as `null`, with `content_withheld: true`.
+  - Approvers (`agent:approve_actions`) still see the approval requests they decide.
+  - The rule holds for admins too.
+  - Also fixed:
+    - the approval-decision response no longer returns the resumed run's answer to
+      an approver who is not its person;
+    - `/operations/overview` shows escalation reasons only to their run's person;
+    - escalation notifications carry the private reason only for that person.
+  - The rule lives in one place (`app/rbac/visibility.py`), covered by 14
+    regression tests in `tests/security/`.
 
 
 ### Added — Noblen AI 3.0, Milestone 7 (Operating-environment UI)

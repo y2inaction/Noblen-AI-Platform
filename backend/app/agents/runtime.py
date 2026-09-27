@@ -1119,9 +1119,9 @@ class AgentRuntime:
             Permission.AGENT_APPROVE_ACTIONS,
             kind="run_escalated",
             title=f"Escalated: {state.agent.name} needs a human",
-            body=reason,
             link={"type": "agent_run", "id": str(run.id)},
             also=run.initiated_by,
+            participant_body=reason,
         )
         logger.info("agent_run_escalated", reason=reason)
         return RuntimeResult(

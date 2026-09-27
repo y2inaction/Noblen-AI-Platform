@@ -117,7 +117,8 @@ class WorkflowRunOut(BaseModel):
     status: str
     trigger_type: str
     trigger_detail: dict[str, Any]
-    input: dict[str, Any]
+    # Content (ADR-0035): None when withheld from someone other than the run's person.
+    input: dict[str, Any] | None
     current_step: str | None
     current_attempt: int
     steps_executed: int
@@ -129,10 +130,11 @@ class WorkflowRunOut(BaseModel):
     started_at: datetime | None
     finished_at: datetime | None
     created_at: datetime
+    content_withheld: bool = False
 
 
 class WorkflowRunDetail(WorkflowRunOut):
-    context: dict[str, Any] = Field(default_factory=dict)
+    context: dict[str, Any] | None = None
     steps: list[WorkflowStepRunOut] = Field(default_factory=list)
 
 

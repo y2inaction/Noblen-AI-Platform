@@ -99,10 +99,15 @@ SQL (`readable_by`). Other members, admins included, get 404. Being in the same
 organization is not enough. Run traces remain organization-visible because they
 never contain content.
 
-Workflow runs are shared automations. Step outputs, including an agent step's
-answer, are visible to everyone with `workflow:view`. An agent step runs with its
-activator's access, so do not build shared workflows over knowledge the whole team
-should not read.
+Run content is private to the person the run acts for (ADR-0035). A workflow or
+agent run reads with one person's authority, so what it was given and produced can
+quote their private memories and restricted knowledge. Other members, admins
+included, see the run's metadata: status, steps, timings, error codes, cost, and who
+initiated it. The content fields (`input`, `context`, step outputs, escalation
+reasons, and tool error text) are returned as `null` with `content_withheld: true`.
+Approvers see the requests they decide. The rule is enforced in
+`app/rbac/visibility.py`, not in the UI. The same file also covers the
+approval-decision response, the operations overview and notification bodies.
 
 ## Separation of duties (M2)
 

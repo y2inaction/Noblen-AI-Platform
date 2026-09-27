@@ -11,13 +11,8 @@ from app.api.deps import TenantContext, require_permission
 from app.db.session import get_db
 from app.models.enums import RunStatus
 from app.rbac.permissions import Permission
-from app.schemas.run import (
-    OperationsOverviewOut,
-    RunDetailOut,
-    RunListOut,
-    RunOut,
-    RunStepOut,
-)
+from app.rbac.visibility import present_agent_run, present_agent_run_detail
+from app.schemas.run import OperationsOverviewOut, RunDetailOut, RunListOut
 from app.services import operations_service
 
 router = APIRouter(tags=["operations"])
@@ -40,7 +35,7 @@ async def list_runs(
         limit=limit,
         offset=offset,
     )
-    return RunListOut(items=[RunOut.model_validate(r) for r in items], total=total)
+    return RunListOut(items=[present_agent_run(r, ctx.viewer) for r in items], total=total)
 
 
 @router.get("/runs/{run_id}", response_model=RunDetailOut)
@@ -50,9 +45,7 @@ async def get_run(
     db: AsyncSession = Depends(get_db),
 ) -> RunDetailOut:
     run, steps = await operations_service.get_run(db, ctx.organization_id, run_id)
-    detail = RunDetailOut.model_validate(run)
-    detail.steps = [RunStepOut.model_validate(s) for s in steps]
-    return detail
+    return present_agent_run_detail(run, steps, ctx.viewer)
 
 
 @router.get("/operations/overview", response_model=OperationsOverviewOut)
@@ -61,4 +54,6 @@ async def operations_overview(
     ctx: TenantContext = Depends(require_permission(Permission.OPERATIONS_VIEW)),
     db: AsyncSession = Depends(get_db),
 ) -> OperationsOverviewOut:
-    return await operations_service.overview(db, ctx.organization_id, window_days=window_days)
+    return await operations_service.overview(
+        db, ctx.organization_id, ctx.viewer, window_days=window_days
+    )
