@@ -46,6 +46,7 @@ from app.ai.gateway import AIGateway, get_ai_gateway
 from app.ai.types import GenerationRequest, GenerationResponse, Message, ToolCall, ToolSpec
 from app.core.config import settings
 from app.core.logging import bind_context, get_logger
+from app.knowledge.agent_tables import AgentKnowledgeTables
 from app.models.agent import Agent, AgentVersion
 from app.models.approval import Approval
 from app.models.enums import (
@@ -191,6 +192,7 @@ class AgentRuntime:
         gateway = self._gateway
 
         async def _search(query: str, knowledge_base_ids=None, top_k=None) -> dict[str, Any]:
+            from app.knowledge.access import resolve_principal
             from app.knowledge.retrieval import KnowledgeRetriever
             from app.knowledge.service import list_agent_knowledge_base_ids
 
@@ -205,6 +207,9 @@ class AgentRuntime:
                 knowledge_base_ids=allowed,
                 top_k=top_k,
                 user_id=user_id,
+                # The agent sees only what its initiator may currently read,
+                # within the knowledge bases attached to the agent.
+                principal=await resolve_principal(db, organization_id, user_id),
             )
             if not results:
                 return {**empty, "message": "No relevant knowledge found."}
@@ -284,6 +289,12 @@ class AgentRuntime:
                 organization_id=run.organization_id,
                 agent_id=agent.id,
                 run_id=run.id,
+                user_id=run.initiated_by,
+            ),
+            knowledge_tables=AgentKnowledgeTables(
+                db=db,
+                organization_id=run.organization_id,
+                agent_id=agent.id,
                 user_id=run.initiated_by,
             ),
         )

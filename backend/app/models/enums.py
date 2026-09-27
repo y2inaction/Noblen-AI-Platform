@@ -135,6 +135,28 @@ class KnowledgeBaseStatus(str, enum.Enum):
     ARCHIVED = "ARCHIVED"
 
 
+class KnowledgeVisibility(str, enum.Enum):
+    """Who inside the organization may read a knowledge base (Noblen AI 3.0, M3)."""
+
+    ORGANIZATION = "ORGANIZATION"  # every member with knowledge permissions
+    RESTRICTED = "RESTRICTED"  # only granted users/roles (plus creator and read-all)
+
+
+class DocumentVisibility(str, enum.Enum):
+    INHERIT = "INHERIT"  # anyone who can read the knowledge base
+    RESTRICTED = "RESTRICTED"  # additionally requires a document grant
+
+
+class GrantPrincipalType(str, enum.Enum):
+    USER = "USER"
+    ROLE = "ROLE"
+
+
+class KnowledgeResourceType(str, enum.Enum):
+    KNOWLEDGE_BASE = "KNOWLEDGE_BASE"
+    DOCUMENT = "DOCUMENT"
+
+
 class DocumentSourceType(str, enum.Enum):
     UPLOAD = "UPLOAD"
     TEXT = "TEXT"

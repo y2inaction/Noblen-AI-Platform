@@ -30,6 +30,8 @@ class ToolContext:
     # Tenant-, agent- and run-bound access to tasks and notifications
     # (`app.services.work_service.AgentWorkspace`), injected by the runtime.
     workspace: Any = None
+    # Structured queries over tabular knowledge (M3), scoped like knowledge_search.
+    knowledge_tables: Any = None
 
 
 @dataclass

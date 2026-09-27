@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -37,6 +37,7 @@ class KnowledgeBaseOut(BaseModel):
     slug: str
     description: str | None
     status: str
+    visibility: str
     embedding_provider: str
     embedding_model: str
     embedding_dimension: int
@@ -68,6 +69,7 @@ class DocumentOut(BaseModel):
     file_size: int
     checksum: str
     status: str
+    visibility: str
     version: int
     chunk_count: int
     error_message: str | None
@@ -118,3 +120,44 @@ class AgentKnowledgeSourceOut(BaseModel):
     id: uuid.UUID
     agent_id: uuid.UUID
     knowledge_base_id: uuid.UUID
+
+
+# --------------------------------------------------------------------------- #
+# Access control (Noblen AI 3.0, M3)
+# --------------------------------------------------------------------------- #
+class AccessGrantIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    principal_type: Literal["USER", "ROLE"]
+    # A user id for USER grants, a role name (e.g. "MANAGER") for ROLE grants.
+    principal: str = Field(min_length=1, max_length=64)
+
+
+class AccessGrantOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    principal_type: str
+    principal: str
+    created_by: uuid.UUID | None
+    created_at: datetime
+
+
+class KnowledgeBaseAccessUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    visibility: Literal["ORGANIZATION", "RESTRICTED"]
+    grants: list[AccessGrantIn] = Field(default_factory=list, max_length=200)
+
+
+class DocumentAccessUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    visibility: Literal["INHERIT", "RESTRICTED"]
+    grants: list[AccessGrantIn] = Field(default_factory=list, max_length=200)
+
+
+class AccessOut(BaseModel):
+    resource_type: str
+    resource_id: uuid.UUID
+    visibility: str
+    grants: list[AccessGrantOut]

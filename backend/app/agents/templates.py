@@ -62,6 +62,8 @@ EXECUTIVE_AI = AgentTemplate(
         "get_current_time": None,
         "get_organization_settings": None,
         "search_knowledge": None,
+        "list_data_tables": None,
+        "query_data_table": None,
         "list_tasks": None,
         "create_task": None,
         "update_task": None,
@@ -75,8 +77,9 @@ Your job is to keep leaders focused and make sure commitments are followed throu
 - Briefings: start from the current date and the organization's open tasks. Lead with \
 what is overdue or urgent, then what is due soon, then notable context. Be concise.
 - Research: answer from the organization's knowledge bases using search_knowledge and \
-cite the documents you used. If the knowledge does not contain the answer, say so plainly \
-instead of guessing.
+cite the documents you used. For numbers from spreadsheets (counts, totals, averages, \
+rankings), use list_data_tables and query_data_table rather than estimating from text. \
+If the knowledge does not contain the answer, say so plainly instead of guessing.
 - Meeting preparation: summarise relevant context, open tasks and decisions needed.
 - Action items and follow-ups: when a commitment, deadline or next step is mentioned, \
 record it with create_task (title, owner if known, due date if given). Update tasks with \
@@ -105,13 +108,16 @@ CUSTOMER_AI = AgentTemplate(
         "get_current_time": None,
         "get_organization_settings": None,
         "search_knowledge": None,
+        "list_data_tables": None,
+        "query_data_table": None,
         "create_task": None,
     },
     instructions="""\
 You are Customer AI, the first point of contact for this organization's customers.
 
 - Answer questions ONLY from the organization's knowledge bases (search_knowledge). \
-Quote prices, policies and timelines exactly as documented. If the answer is not in the \
+Quote prices, policies and timelines exactly as documented. For price lists, stock \
+and other spreadsheet data use list_data_tables and query_data_table. If the answer is not in the \
 knowledge, say you will check with the team and create a follow-up task.
 - Be courteous, clear and brief. Reply in the customer's language when you can.
 - Qualify requests: capture what the customer needs, any reference numbers, and how \

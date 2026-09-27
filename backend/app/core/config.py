@@ -110,6 +110,10 @@ class Settings(BaseSettings):
     # Retrieval.
     KNOWLEDGE_DEFAULT_TOP_K: int = 5
     KNOWLEDGE_MAX_TOP_K: int = 20
+    # Tabular knowledge (CSV/XLSX → queryable tables, M3).
+    KNOWLEDGE_MAX_TABLE_ROWS: int = 50_000
+    KNOWLEDGE_MAX_TABLE_COLUMNS: int = 200
+    KNOWLEDGE_MAX_QUERY_ROWS: int = 200
     # Minimum cosine similarity (0..1) for a chunk to be returned.
     KNOWLEDGE_DEFAULT_SIMILARITY_THRESHOLD: float = 0.0
     # Local document storage root (dev/test); swap for object storage in prod.

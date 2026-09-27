@@ -30,7 +30,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.config import settings
 from app.db.base import Base, TenantMixin, TimestampMixin, UUIDMixin
 from app.db.types import EmbeddingVector
-from app.models.enums import DocumentSourceType, DocumentStatus, KnowledgeBaseStatus
+from app.models.enums import (
+    DocumentSourceType,
+    DocumentStatus,
+    DocumentVisibility,
+    KnowledgeBaseStatus,
+    KnowledgeVisibility,
+)
 
 # Platform-wide embedding dimension (matches the configured model). The pgvector
 # column is fixed at this size; ingestion rejects embeddings of another dimension.
@@ -54,6 +60,13 @@ class KnowledgeBase(UUIDMixin, TimestampMixin, TenantMixin, Base):
         String(128), default=settings.KNOWLEDGE_EMBEDDING_MODEL, nullable=False
     )
     embedding_dimension: Mapped[int] = mapped_column(Integer, default=EMBEDDING_DIM, nullable=False)
+    # Access within the organization (M3). ORGANIZATION keeps Phase 4 behaviour.
+    visibility: Mapped[str] = mapped_column(
+        String(16),
+        default=KnowledgeVisibility.ORGANIZATION.value,
+        server_default=KnowledgeVisibility.ORGANIZATION.value,
+        nullable=False,
+    )
     configuration: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     kb_metadata: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     created_by: Mapped[uuid.UUID | None] = mapped_column(
@@ -88,6 +101,12 @@ class KnowledgeDocument(UUIDMixin, TimestampMixin, TenantMixin, Base):
     )
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     chunk_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    visibility: Mapped[str] = mapped_column(
+        String(16),
+        default=DocumentVisibility.INHERIT.value,
+        server_default=DocumentVisibility.INHERIT.value,
+        nullable=False,
+    )
     doc_metadata: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(
@@ -159,3 +178,63 @@ class AgentKnowledgeSource(UUIDMixin, TimestampMixin, TenantMixin, Base):
     knowledge_base_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("knowledge_bases.id", ondelete="CASCADE"), nullable=False, index=True
     )
+
+
+class KnowledgeAccessGrant(UUIDMixin, TimestampMixin, TenantMixin, Base):
+    """Grants a user or a role read access to a restricted knowledge base/document."""
+
+    __tablename__ = "knowledge_access_grants"
+    __table_args__ = (
+        UniqueConstraint(
+            "resource_type",
+            "resource_id",
+            "principal_type",
+            "principal",
+            name="uq_knowledge_grant",
+        ),
+    )
+
+    resource_type: Mapped[str] = mapped_column(String(24), nullable=False)
+    resource_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    principal_type: Mapped[str] = mapped_column(String(8), nullable=False)
+    # A user id (as string) for USER grants, a role name for ROLE grants.
+    principal: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+
+class KnowledgeTable(UUIDMixin, TimestampMixin, TenantMixin, Base):
+    """A tabular dataset extracted from a CSV/XLSX document (one per sheet)."""
+
+    __tablename__ = "knowledge_tables"
+    __table_args__ = (UniqueConstraint("document_id", "name", name="uq_table_document_name"),)
+
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("knowledge_documents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    knowledge_base_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("knowledge_bases.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    # [{"name": "...", "type": "number" | "text"}]
+    columns: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    row_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    rows: Mapped[list[KnowledgeTableRow]] = relationship(
+        back_populates="table", cascade="all, delete-orphan"
+    )
+
+
+class KnowledgeTableRow(UUIDMixin, TenantMixin, Base):
+    __tablename__ = "knowledge_table_rows"
+    __table_args__ = (UniqueConstraint("table_id", "row_index", name="uq_table_row_index"),)
+
+    table_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("knowledge_tables.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    row_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    # {column name: number | string | null}; numeric columns hold numbers or null only.
+    data: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+    table: Mapped[KnowledgeTable] = relationship(back_populates="rows")

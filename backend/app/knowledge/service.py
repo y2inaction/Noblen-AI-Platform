@@ -15,6 +15,13 @@ from app.core.config import settings
 from app.core.exceptions import ConflictError
 from app.core.utils import slugify, unique_suffix
 from app.db.tenant import tenant_scoped
+from app.knowledge.access import (
+    Principal,
+    can_read_document,
+    document_readable,
+    knowledge_base_readable,
+    readable_documents_query,
+)
 from app.knowledge.errors import (
     DocumentNotFound,
     DocumentTooLarge,
@@ -75,32 +82,45 @@ async def create_knowledge_base(
 
 
 async def get_knowledge_base(
-    db: AsyncSession, organization_id: uuid.UUID, kb_id: uuid.UUID
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    kb_id: uuid.UUID,
+    *,
+    principal: Principal | None = None,
 ) -> KnowledgeBase:
-    kb = (
-        await db.execute(
-            tenant_scoped(select(KnowledgeBase), KnowledgeBase, organization_id).where(
-                KnowledgeBase.id == kb_id
-            )
-        )
-    ).scalar_one_or_none()
+    """Tenant-scoped lookup. With a `principal`, unreadable bases are not found."""
+    stmt = tenant_scoped(select(KnowledgeBase), KnowledgeBase, organization_id).where(
+        KnowledgeBase.id == kb_id
+    )
+    if principal is not None:
+        stmt = stmt.where(knowledge_base_readable(principal))
+    kb = (await db.execute(stmt)).scalar_one_or_none()
     if kb is None:
         raise KnowledgeBaseNotFound("Knowledge base not found.")
     return kb
 
 
 async def list_knowledge_bases(
-    db: AsyncSession, organization_id: uuid.UUID, *, limit: int = 50, offset: int = 0
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+    principal: Principal | None = None,
 ) -> tuple[list[KnowledgeBase], int]:
+    readable = [knowledge_base_readable(principal)] if principal is not None else []
     total = (
         await db.execute(
-            tenant_scoped(select(func.count(KnowledgeBase.id)), KnowledgeBase, organization_id)
+            tenant_scoped(
+                select(func.count(KnowledgeBase.id)), KnowledgeBase, organization_id
+            ).where(*readable)
         )
     ).scalar_one()
     rows = (
         (
             await db.execute(
                 tenant_scoped(select(KnowledgeBase), KnowledgeBase, organization_id)
+                .where(*readable)
                 .order_by(KnowledgeBase.created_at.desc())
                 .limit(limit)
                 .offset(offset)
@@ -118,8 +138,9 @@ async def update_knowledge_base(
     kb_id: uuid.UUID,
     *,
     updates: dict[str, Any],
+    principal: Principal | None = None,
 ) -> KnowledgeBase:
-    kb = await get_knowledge_base(db, organization_id, kb_id)
+    kb = await get_knowledge_base(db, organization_id, kb_id, principal=principal)
     allowed = {"name", "description", "status", "configuration"}
     for key, value in updates.items():
         if key in allowed and value is not None:
@@ -131,9 +152,13 @@ async def update_knowledge_base(
 
 
 async def archive_knowledge_base(
-    db: AsyncSession, organization_id: uuid.UUID, kb_id: uuid.UUID
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    kb_id: uuid.UUID,
+    *,
+    principal: Principal | None = None,
 ) -> KnowledgeBase:
-    kb = await get_knowledge_base(db, organization_id, kb_id)
+    kb = await get_knowledge_base(db, organization_id, kb_id, principal=principal)
     kb.status = KnowledgeBaseStatus.ARCHIVED.value
     await db.flush()
     return kb
@@ -154,9 +179,10 @@ async def create_document(
     mime_type: str | None = None,
     filename: str | None = None,
     storage: DocumentStorage | None = None,
+    principal: Principal | None = None,
 ) -> tuple[KnowledgeDocument, bool]:
     """Create (or return existing, idempotent) a document. Returns (document, created)."""
-    kb = await get_knowledge_base(db, organization_id, kb_id)
+    kb = await get_knowledge_base(db, organization_id, kb_id, principal=principal)
 
     max_bytes = settings.MAX_DOCUMENT_SIZE_MB * 1024 * 1024
     if len(data) > max_bytes:
@@ -172,7 +198,10 @@ async def create_document(
         )
     ).scalar_one_or_none()
     if existing is not None:
-        # Idempotent: same bytes in the same KB → return the existing document.
+        # Idempotent: same bytes in the same KB → return the existing document,
+        # unless the caller may not read it (don't reveal restricted documents).
+        if principal is not None and not await can_read_document(db, principal, existing.id):
+            raise ConflictError("An identical document already exists in this knowledge base.")
         return existing, False
 
     storage = storage or get_document_storage()
@@ -198,15 +227,18 @@ async def create_document(
 
 
 async def get_document(
-    db: AsyncSession, organization_id: uuid.UUID, document_id: uuid.UUID
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    document_id: uuid.UUID,
+    *,
+    principal: Principal | None = None,
 ) -> KnowledgeDocument:
-    doc = (
-        await db.execute(
-            tenant_scoped(select(KnowledgeDocument), KnowledgeDocument, organization_id).where(
-                KnowledgeDocument.id == document_id
-            )
-        )
-    ).scalar_one_or_none()
+    stmt = tenant_scoped(select(KnowledgeDocument), KnowledgeDocument, organization_id).where(
+        KnowledgeDocument.id == document_id
+    )
+    if principal is not None:
+        stmt = stmt.where(KnowledgeDocument.id.in_(readable_documents_query(principal)))
+    doc = (await db.execute(stmt)).scalar_one_or_none()
     if doc is None:
         raise DocumentNotFound("Document not found.")
     return doc
@@ -219,14 +251,17 @@ async def list_documents(
     *,
     limit: int = 50,
     offset: int = 0,
+    principal: Principal | None = None,
 ) -> tuple[list[KnowledgeDocument], int]:
-    await get_knowledge_base(db, organization_id, kb_id)  # tenant + existence check
+    # tenant + existence (+ readability) check
+    await get_knowledge_base(db, organization_id, kb_id, principal=principal)
+    readable = [document_readable(principal)] if principal is not None else []
     base = tenant_scoped(select(KnowledgeDocument), KnowledgeDocument, organization_id).where(
-        KnowledgeDocument.knowledge_base_id == kb_id
+        KnowledgeDocument.knowledge_base_id == kb_id, *readable
     )
     count = tenant_scoped(
         select(func.count(KnowledgeDocument.id)), KnowledgeDocument, organization_id
-    ).where(KnowledgeDocument.knowledge_base_id == kb_id)
+    ).where(KnowledgeDocument.knowledge_base_id == kb_id, *readable)
     total = (await db.execute(count)).scalar_one()
     rows = (
         (
@@ -241,9 +276,13 @@ async def list_documents(
 
 
 async def delete_document(
-    db: AsyncSession, organization_id: uuid.UUID, document_id: uuid.UUID
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    document_id: uuid.UUID,
+    *,
+    principal: Principal | None = None,
 ) -> None:
-    doc = await get_document(db, organization_id, document_id)
+    doc = await get_document(db, organization_id, document_id, principal=principal)
     storage = get_document_storage()
     if doc.source_uri:
         # Best-effort blob cleanup; DB removal is authoritative.
@@ -257,10 +296,16 @@ async def delete_document(
 # Agent ↔ knowledge-base authorization
 # --------------------------------------------------------------------------- #
 async def attach_agent_knowledge_base(
-    db: AsyncSession, organization_id: uuid.UUID, agent_id: uuid.UUID, kb_id: uuid.UUID
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    kb_id: uuid.UUID,
+    *,
+    principal: Principal | None = None,
 ) -> AgentKnowledgeSource:
     await get_agent(db, organization_id, agent_id)  # tenant + existence
-    await get_knowledge_base(db, organization_id, kb_id)  # tenant + existence
+    # You can only give an agent knowledge you can read yourself.
+    await get_knowledge_base(db, organization_id, kb_id, principal=principal)
     existing = (
         await db.execute(
             select(AgentKnowledgeSource).where(

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import delete
+from sqlalchemy import delete, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.gateway import AIGateway
@@ -19,11 +19,55 @@ from app.core.logging import get_logger
 from app.knowledge import chunking, cleaning, extraction
 from app.knowledge.errors import EmbeddingDimensionMismatch
 from app.knowledge.storage import DocumentStorage, get_document_storage
+from app.knowledge.tabular import ExtractedTable
 from app.models.enums import DocumentStatus
-from app.models.knowledge import DocumentChunk, DocumentEmbedding, KnowledgeBase, KnowledgeDocument
+from app.models.knowledge import (
+    DocumentChunk,
+    DocumentEmbedding,
+    KnowledgeBase,
+    KnowledgeDocument,
+    KnowledgeTable,
+    KnowledgeTableRow,
+)
 from app.services import ai_usage_service
 
 logger = get_logger("knowledge.ingestion")
+
+
+async def _store_tables(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    document: KnowledgeDocument,
+    knowledge_base: KnowledgeBase,
+    tables: list[ExtractedTable],
+) -> None:
+    """Replace the document's structured tables (re-ingestion is idempotent)."""
+    await db.execute(delete(KnowledgeTable).where(KnowledgeTable.document_id == document.id))
+    for extracted in tables:
+        table = KnowledgeTable(
+            organization_id=organization_id,
+            document_id=document.id,
+            knowledge_base_id=knowledge_base.id,
+            name=extracted.name,
+            columns=extracted.columns,
+            row_count=len(extracted.rows),
+        )
+        db.add(table)
+        await db.flush()
+        if extracted.rows:
+            await db.execute(
+                insert(KnowledgeTableRow),
+                [
+                    {
+                        "id": uuid.uuid4(),
+                        "organization_id": organization_id,
+                        "table_id": table.id,
+                        "row_index": i,
+                        "data": row,
+                    }
+                    for i, row in enumerate(extracted.rows)
+                ],
+            )
 
 
 async def ingest_document(
@@ -120,6 +164,8 @@ async def ingest_document(
                     embedding=vector,
                 )
             )
+
+        await _store_tables(db, organization_id, document, knowledge_base, extracted.tables)
 
         document.chunk_count = len(chunks)
         document.version = (document.version or 1) + (1 if force else 0)

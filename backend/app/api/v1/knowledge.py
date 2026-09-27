@@ -5,6 +5,7 @@ agent↔knowledge-base authorization. All endpoints are tenant-scoped and RBAC-g
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,16 +15,21 @@ from app.api.deps import TenantContext, require_permission
 from app.core.config import settings
 from app.core.exceptions import ValidationError
 from app.db.session import get_db
-from app.knowledge import ingestion, service
+from app.knowledge import access, ingestion, service, tables
+from app.knowledge.access import Principal, resolve_principal
 from app.knowledge.retrieval import KnowledgeRetriever
-from app.models.enums import DocumentSourceType
+from app.models.enums import DocumentSourceType, KnowledgeResourceType
 from app.rbac.permissions import Permission
 from app.schemas.knowledge import (
+    AccessGrantOut,
+    AccessOut,
     AgentKnowledgeBaseAttach,
     AgentKnowledgeSourceOut,
+    DocumentAccessUpdate,
     DocumentListOut,
     DocumentOut,
     DocumentTextCreate,
+    KnowledgeBaseAccessUpdate,
     KnowledgeBaseCreate,
     KnowledgeBaseListOut,
     KnowledgeBaseOut,
@@ -32,8 +38,15 @@ from app.schemas.knowledge import (
     SearchResponse,
     SearchResultOut,
 )
+from app.services.audit_service import record_audit
 
 router = APIRouter(tags=["knowledge"])
+
+
+async def _principal(db: AsyncSession, ctx: TenantContext) -> Principal:
+    """The caller's knowledge principal, resolved from the database."""
+    return await resolve_principal(db, ctx.organization_id, ctx.user.id)
+
 
 _MAX_UPLOAD_BYTES = settings.MAX_DOCUMENT_SIZE_MB * 1024 * 1024
 
@@ -69,7 +82,7 @@ async def list_knowledge_bases(
     offset: int = Query(default=0, ge=0),
 ) -> KnowledgeBaseListOut:
     items, total = await service.list_knowledge_bases(
-        db, ctx.organization_id, limit=limit, offset=offset
+        db, ctx.organization_id, limit=limit, offset=offset, principal=await _principal(db, ctx)
     )
     return KnowledgeBaseListOut(
         items=[KnowledgeBaseOut.model_validate(k) for k in items], total=total
@@ -82,7 +95,9 @@ async def get_knowledge_base(
     ctx: TenantContext = Depends(require_permission(Permission.KNOWLEDGE_VIEW)),
     db: AsyncSession = Depends(get_db),
 ) -> KnowledgeBaseOut:
-    kb = await service.get_knowledge_base(db, ctx.organization_id, kb_id)
+    kb = await service.get_knowledge_base(
+        db, ctx.organization_id, kb_id, principal=await _principal(db, ctx)
+    )
     return KnowledgeBaseOut.model_validate(kb)
 
 
@@ -94,7 +109,11 @@ async def update_knowledge_base(
     db: AsyncSession = Depends(get_db),
 ) -> KnowledgeBaseOut:
     kb = await service.update_knowledge_base(
-        db, ctx.organization_id, kb_id, updates=body.model_dump(exclude_unset=True)
+        db,
+        ctx.organization_id,
+        kb_id,
+        updates=body.model_dump(exclude_unset=True),
+        principal=await _principal(db, ctx),
     )
     await db.commit()
     await db.refresh(kb)
@@ -108,7 +127,9 @@ async def delete_knowledge_base(
     db: AsyncSession = Depends(get_db),
 ) -> KnowledgeBaseOut:
     """Soft-delete: archive the knowledge base (documents are preserved)."""
-    kb = await service.archive_knowledge_base(db, ctx.organization_id, kb_id)
+    kb = await service.archive_knowledge_base(
+        db, ctx.organization_id, kb_id, principal=await _principal(db, ctx)
+    )
     await db.commit()
     await db.refresh(kb)
     return KnowledgeBaseOut.model_validate(kb)
@@ -139,6 +160,7 @@ async def _create_and_ingest(
         data=data,
         mime_type=mime_type,
         filename=filename,
+        principal=await _principal(db, ctx),
     )
     if created:
         kb = await service.get_knowledge_base(db, ctx.organization_id, kb_id)
@@ -213,7 +235,12 @@ async def list_documents(
     offset: int = Query(default=0, ge=0),
 ) -> DocumentListOut:
     items, total = await service.list_documents(
-        db, ctx.organization_id, kb_id, limit=limit, offset=offset
+        db,
+        ctx.organization_id,
+        kb_id,
+        limit=limit,
+        offset=offset,
+        principal=await _principal(db, ctx),
     )
     return DocumentListOut(items=[DocumentOut.model_validate(d) for d in items], total=total)
 
@@ -224,7 +251,9 @@ async def get_document(
     ctx: TenantContext = Depends(require_permission(Permission.KNOWLEDGE_VIEW)),
     db: AsyncSession = Depends(get_db),
 ) -> DocumentOut:
-    doc = await service.get_document(db, ctx.organization_id, document_id)
+    doc = await service.get_document(
+        db, ctx.organization_id, document_id, principal=await _principal(db, ctx)
+    )
     return DocumentOut.model_validate(doc)
 
 
@@ -234,7 +263,9 @@ async def delete_document(
     ctx: TenantContext = Depends(require_permission(Permission.KNOWLEDGE_DELETE)),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    await service.delete_document(db, ctx.organization_id, document_id)
+    await service.delete_document(
+        db, ctx.organization_id, document_id, principal=await _principal(db, ctx)
+    )
     await db.commit()
 
 
@@ -245,7 +276,8 @@ async def reingest_document(
     gateway: AIGateway = Depends(get_ai_gateway),
     db: AsyncSession = Depends(get_db),
 ) -> DocumentOut:
-    doc = await service.get_document(db, ctx.organization_id, document_id)
+    principal = await _principal(db, ctx)
+    doc = await service.get_document(db, ctx.organization_id, document_id, principal=principal)
     kb = await service.get_knowledge_base(db, ctx.organization_id, doc.knowledge_base_id)
     await ingestion.ingest_document(
         db,
@@ -279,6 +311,7 @@ async def search_knowledge(
         top_k=body.top_k,
         similarity_threshold=body.similarity_threshold,
         user_id=ctx.user.id,
+        principal=await _principal(db, ctx),
     )
     await db.commit()  # persist embedding usage
     return SearchResponse(
@@ -313,7 +346,11 @@ async def attach_agent_knowledge_base(
     db: AsyncSession = Depends(get_db),
 ) -> AgentKnowledgeSourceOut:
     link = await service.attach_agent_knowledge_base(
-        db, ctx.organization_id, agent_id, body.knowledge_base_id
+        db,
+        ctx.organization_id,
+        agent_id,
+        body.knowledge_base_id,
+        principal=await _principal(db, ctx),
     )
     await db.commit()
     await db.refresh(link)
@@ -338,3 +375,144 @@ async def detach_agent_knowledge_base(
 ) -> None:
     await service.detach_agent_knowledge_base(db, ctx.organization_id, agent_id, kb_id)
     await db.commit()
+
+
+# --------------------------------------------------------------------------- #
+# Access control (Noblen AI 3.0, M3)
+# --------------------------------------------------------------------------- #
+async def _access_out(
+    db: AsyncSession,
+    ctx: TenantContext,
+    resource_type: str,
+    resource_id: uuid.UUID,
+    visibility: str,
+) -> AccessOut:
+    grants = await access.list_grants(db, ctx.organization_id, resource_type, resource_id)
+    return AccessOut(
+        resource_type=resource_type,
+        resource_id=resource_id,
+        visibility=visibility,
+        grants=[AccessGrantOut.model_validate(g) for g in grants],
+    )
+
+
+@router.get("/knowledge-bases/{kb_id}/access", response_model=AccessOut)
+async def get_knowledge_base_access(
+    kb_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission(Permission.KNOWLEDGE_MANAGE_ACCESS)),
+    db: AsyncSession = Depends(get_db),
+) -> AccessOut:
+    kb = await service.get_knowledge_base(
+        db, ctx.organization_id, kb_id, principal=await _principal(db, ctx)
+    )
+    return await _access_out(
+        db, ctx, KnowledgeResourceType.KNOWLEDGE_BASE.value, kb.id, kb.visibility
+    )
+
+
+@router.put("/knowledge-bases/{kb_id}/access", response_model=AccessOut)
+async def set_knowledge_base_access(
+    kb_id: uuid.UUID,
+    body: KnowledgeBaseAccessUpdate,
+    ctx: TenantContext = Depends(require_permission(Permission.KNOWLEDGE_MANAGE_ACCESS)),
+    db: AsyncSession = Depends(get_db),
+) -> AccessOut:
+    """Replace the base's visibility and grants. Only readers may change access."""
+    kb = await service.get_knowledge_base(
+        db, ctx.organization_id, kb_id, principal=await _principal(db, ctx)
+    )
+    kb.visibility = body.visibility
+    await access.replace_grants(
+        db,
+        ctx.organization_id,
+        KnowledgeResourceType.KNOWLEDGE_BASE.value,
+        kb.id,
+        [access.GrantSpec(g.principal_type, g.principal) for g in body.grants],
+        created_by=ctx.user.id,
+    )
+    await record_audit(
+        db,
+        action="knowledge.access_changed",
+        user_id=ctx.user.id,
+        organization_id=ctx.organization_id,
+        target_type="knowledge_base",
+        target_id=str(kb.id),
+        metadata={"visibility": body.visibility, "grants": len(body.grants)},
+    )
+    await db.commit()
+    return await _access_out(
+        db, ctx, KnowledgeResourceType.KNOWLEDGE_BASE.value, kb.id, kb.visibility
+    )
+
+
+@router.get("/documents/{document_id}/access", response_model=AccessOut)
+async def get_document_access(
+    document_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission(Permission.KNOWLEDGE_MANAGE_ACCESS)),
+    db: AsyncSession = Depends(get_db),
+) -> AccessOut:
+    doc = await service.get_document(
+        db, ctx.organization_id, document_id, principal=await _principal(db, ctx)
+    )
+    return await _access_out(db, ctx, KnowledgeResourceType.DOCUMENT.value, doc.id, doc.visibility)
+
+
+@router.put("/documents/{document_id}/access", response_model=AccessOut)
+async def set_document_access(
+    document_id: uuid.UUID,
+    body: DocumentAccessUpdate,
+    ctx: TenantContext = Depends(require_permission(Permission.KNOWLEDGE_MANAGE_ACCESS)),
+    db: AsyncSession = Depends(get_db),
+) -> AccessOut:
+    doc = await service.get_document(
+        db, ctx.organization_id, document_id, principal=await _principal(db, ctx)
+    )
+    doc.visibility = body.visibility
+    await access.replace_grants(
+        db,
+        ctx.organization_id,
+        KnowledgeResourceType.DOCUMENT.value,
+        doc.id,
+        [access.GrantSpec(g.principal_type, g.principal) for g in body.grants],
+        created_by=ctx.user.id,
+    )
+    await record_audit(
+        db,
+        action="knowledge.access_changed",
+        user_id=ctx.user.id,
+        organization_id=ctx.organization_id,
+        target_type="knowledge_document",
+        target_id=str(doc.id),
+        metadata={"visibility": body.visibility, "grants": len(body.grants)},
+    )
+    await db.commit()
+    return await _access_out(db, ctx, KnowledgeResourceType.DOCUMENT.value, doc.id, doc.visibility)
+
+
+# --------------------------------------------------------------------------- #
+# Structured retrieval over tabular knowledge (Noblen AI 3.0, M3)
+# --------------------------------------------------------------------------- #
+@router.get("/knowledge/tables")
+async def list_knowledge_tables(
+    knowledge_base_id: uuid.UUID | None = None,
+    document_id: uuid.UUID | None = None,
+    ctx: TenantContext = Depends(require_permission(Permission.KNOWLEDGE_VIEW)),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    items = await tables.list_tables(
+        db,
+        await _principal(db, ctx),
+        knowledge_base_ids=[knowledge_base_id] if knowledge_base_id else None,
+        document_id=document_id,
+    )
+    return {"items": items, "total": len(items)}
+
+
+@router.post("/knowledge/tables/{table_id}/query")
+async def query_knowledge_table(
+    table_id: uuid.UUID,
+    body: tables.TableQuery,
+    ctx: TenantContext = Depends(require_permission(Permission.KNOWLEDGE_SEARCH)),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    return await tables.query_table(db, await _principal(db, ctx), table_id, body)

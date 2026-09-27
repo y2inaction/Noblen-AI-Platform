@@ -71,6 +71,9 @@ class Permission:
     KNOWLEDGE_INGEST = "knowledge:ingest"
     KNOWLEDGE_SEARCH = "knowledge:search"
     KNOWLEDGE_MANAGE_SOURCES = "knowledge:manage_sources"
+    # M3: manage who can read a knowledge base/document; read everything (admins).
+    KNOWLEDGE_MANAGE_ACCESS = "knowledge:manage_access"
+    KNOWLEDGE_READ_ALL = "knowledge:read_all"
     WORKFLOW_VIEW = "workflow:view"
     WORKFLOW_MANAGE = "workflow:manage"
     TASK_VIEW = "task:view"
@@ -134,6 +137,7 @@ _MANAGER_PERMISSIONS = _OPERATOR_PERMISSIONS + [
     Permission.KNOWLEDGE_UPDATE,
     Permission.KNOWLEDGE_INGEST,
     Permission.KNOWLEDGE_MANAGE_SOURCES,
+    Permission.KNOWLEDGE_MANAGE_ACCESS,
 ]
 
 # ADMIN: full organization administration.
@@ -147,6 +151,7 @@ _ADMIN_PERMISSIONS = _MANAGER_PERMISSIONS + [
     Permission.AUDIT_VIEW,
     Permission.SETTINGS_MANAGE,
     Permission.KNOWLEDGE_DELETE,
+    Permission.KNOWLEDGE_READ_ALL,
 ]
 
 # Default role -> permission-code mapping. SUPER_ADMIN gets the wildcard.

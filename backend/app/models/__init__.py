@@ -23,8 +23,11 @@ from app.models.knowledge import (
     AgentKnowledgeSource,
     DocumentChunk,
     DocumentEmbedding,
+    KnowledgeAccessGrant,
     KnowledgeBase,
     KnowledgeDocument,
+    KnowledgeTable,
+    KnowledgeTableRow,
 )
 from app.models.membership import OrganizationMember
 from app.models.organization import Organization
@@ -53,6 +56,9 @@ __all__ = [
     "DocumentEmbedding",
     "KnowledgeBase",
     "KnowledgeDocument",
+    "KnowledgeAccessGrant",
+    "KnowledgeTable",
+    "KnowledgeTableRow",
     "Tool",
     "EmailVerificationToken",
     "PasswordResetToken",
