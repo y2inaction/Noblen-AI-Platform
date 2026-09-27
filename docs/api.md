@@ -92,5 +92,19 @@ format, cost estimation, and error semantics.
 Agent execution returns a normalized result whose `status` is `completed` or
 `awaiting_approval` (see [`agents.md`](./agents.md)).
 
-Endpoints for knowledge, leads, workflows, integrations, and billing are added in
-their respective phases.
+### Knowledge + RAG — `/api/v1` (Phase 4)
+| Method | Path | Permission |
+|--------|------|------------|
+| POST/GET/PATCH/DELETE | `/knowledge-bases` (+ `/{id}`) | `knowledge:create/view/update/delete` |
+| POST | `/knowledge-bases/{id}/documents/text` · `/upload` | `knowledge:ingest` |
+| GET | `/knowledge-bases/{id}/documents` · `/documents/{id}` | `knowledge:view` |
+| DELETE | `/documents/{id}` | `knowledge:delete` |
+| POST | `/documents/{id}/ingest` (reprocess) | `knowledge:ingest` |
+| POST | `/knowledge/search` | `knowledge:search` |
+| POST/GET/DELETE | `/agents/{id}/knowledge-bases` (+ `/{kb_id}`) | `knowledge:manage_sources` / `agent:view` |
+
+See [`knowledge.md`](./knowledge.md) for the ingestion pipeline, pgvector retrieval,
+citations, and the `search_knowledge` RAG tool.
+
+Endpoints for leads, workflows, integrations, and billing are added in their
+respective phases.

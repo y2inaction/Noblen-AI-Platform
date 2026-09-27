@@ -6,6 +6,28 @@ and the project uses Conventional Commits.
 
 ## [Unreleased]
 
+### Added — Phase 4 (Knowledge + RAG)
+- Knowledge domain (tenant-scoped): `knowledge_bases`, `knowledge_documents`,
+  `document_chunks`, `document_embeddings` (pgvector), `agent_knowledge_sources`.
+- Deterministic ingestion pipeline (load → extract → clean → chunk → embed → store)
+  for TXT/MD/PDF/DOCX, with an actionable `FAILED` state, `(kb, checksum)` idempotency,
+  and atomic re-ingestion.
+- Embeddings routed through the Phase 2 AI Gateway; fixed-dimension pgvector column
+  (`EmbeddingVector`: `vector(dim)` on PostgreSQL, JSON on SQLite) + HNSW cosine index.
+- `KnowledgeRetriever`: tenant-scoped cosine search in PostgreSQL (`<=>`, never Python
+  scoring), similarity thresholds, and stable citations (never fabricated).
+- `search_knowledge` built-in tool bridging the Agent Runtime to RAG, with server-side
+  agent→knowledge-base authorization and untrusted-content labelling (prompt-injection
+  defense).
+- Document storage abstraction (local; S3-ready), file validation, and path-traversal
+  protection.
+- Knowledge RBAC (`knowledge:view/create/update/delete/ingest/search/manage_sources`)
+  and API: knowledge bases, documents (text + upload), reprocess, search, and agent-KB
+  sources. AI usage records gained nullable `knowledge_base_id` + `document_id`.
+- Alembic migration (`CREATE EXTENSION vector`, HNSW index; upgrade/downgrade/upgrade
+  verified on PostgreSQL) and a CI PostgreSQL+pgvector service for the Knowledge/RAG
+  suite. `docs/knowledge.md` + doc updates.
+
 ### Added — Phase 3 (Agent Engine)
 - Agent registry with CRUD, per-org unique slugs, and a server-enforced lifecycle
   state machine (`DRAFT → TESTING → ACTIVE → PAUSED → ARCHIVED`).

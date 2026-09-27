@@ -19,6 +19,13 @@ from app.models.conversation import (
     ConversationMessage,
     ConversationParticipant,
 )
+from app.models.knowledge import (
+    AgentKnowledgeSource,
+    DocumentChunk,
+    DocumentEmbedding,
+    KnowledgeBase,
+    KnowledgeDocument,
+)
 from app.models.membership import OrganizationMember
 from app.models.organization import Organization
 from app.models.rbac import Permission, Role, role_permissions
@@ -34,9 +41,14 @@ __all__ = [
     "AIUsageRecord",
     "Approval",
     "AuditLog",
+    "AgentKnowledgeSource",
     "Conversation",
     "ConversationMessage",
     "ConversationParticipant",
+    "DocumentChunk",
+    "DocumentEmbedding",
+    "KnowledgeBase",
+    "KnowledgeDocument",
     "Tool",
     "EmailVerificationToken",
     "PasswordResetToken",

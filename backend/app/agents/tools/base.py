@@ -23,6 +23,10 @@ class ToolContext:
     conversation_id: uuid.UUID | None
     # A safe, read-only subset of organization settings (never secrets).
     org_settings: dict[str, Any] = field(default_factory=dict)
+    # Controlled capability injected by the runtime for knowledge-enabled agents.
+    # An async callable(query, knowledge_base_ids, top_k) -> dict that performs a
+    # tenant- AND agent-scoped retrieval. Tools never get raw DB/gateway access.
+    knowledge_search: Any = None
 
 
 @dataclass

@@ -70,8 +70,47 @@ class EchoTool(ToolHandler):
         return ToolResult.success(text=text)
 
 
+class SearchKnowledgeTool(ToolHandler):
+    """Retrieve relevant chunks from the agent's authorized knowledge bases (RAG).
+
+    Authorization is enforced server-side by the runtime-provided
+    ``context.knowledge_search`` capability — the model cannot widen scope or reach
+    another organization's data through tool arguments.
+    """
+
+    handler_identifier = "search_knowledge"
+    name = "search_knowledge"
+    description = (
+        "Search the organization's knowledge bases assigned to this agent for "
+        "information relevant to a query. Returns matching passages with citations."
+    )
+    tool_type = "knowledge"
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string"},
+            "top_k": {"type": "integer"},
+        },
+        "required": ["query"],
+        "additionalProperties": False,
+    }
+    output_schema = {"type": "object"}
+    default_permission_mode = ToolPermissionMode.AUTO.value
+
+    async def execute(self, context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        query = arguments.get("query")
+        if not isinstance(query, str) or not query.strip():
+            return ToolResult.failure("`query` must be a non-empty string.")
+        if context.knowledge_search is None:
+            return ToolResult.failure("Knowledge search is not available for this agent.")
+        top_k = arguments.get("top_k")
+        result = await context.knowledge_search(query=query, top_k=top_k)
+        return ToolResult.success(**result)
+
+
 BUILTIN_TOOLS: list[ToolHandler] = [
     GetCurrentTimeTool(),
     GetOrganizationSettingsTool(),
     EchoTool(),
+    SearchKnowledgeTool(),
 ]

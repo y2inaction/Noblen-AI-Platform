@@ -62,8 +62,20 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 - [x] Test suites (registry, runtime, API, approvals, tenant isolation) — no real API calls
 - [x] Minimal internal Agent Playground page + documentation
 
-## Phase 4 — Knowledge ⬜
-- [ ] Upload → extract → clean → chunk → embed (pgvector) → retrieve → cite
+## Phase 4 — Knowledge + RAG ✅
+- [x] Knowledge domain: knowledge_bases, knowledge_documents, document_chunks,
+      document_embeddings (pgvector), agent_knowledge_sources — tenant-scoped
+- [x] Ingestion pipeline: load → extract (TXT/MD/PDF/DOCX) → clean → chunk → embed → store
+- [x] Embeddings via the Phase 2 AI Gateway; fixed 1536-dim vector column
+- [x] pgvector cosine retrieval (`<=>`) + HNSW index; tenant-scoped SQL, never Python scoring
+- [x] Citations (document/chunk/page + similarity); empty retrieval reported honestly
+- [x] `search_knowledge` built-in tool bridging Agent Runtime → RAG (server-side agent authz)
+- [x] Prompt-injection defense: retrieved content is untrusted tool data, never instructions
+- [x] Storage abstraction (local; S3-ready), file validation, idempotency, atomic re-ingest
+- [x] Knowledge RBAC + API (KBs, documents, ingest, search, agent-KB sources)
+- [x] Alembic migration (CREATE EXTENSION vector + HNSW; upgrade/downgrade/upgrade verified)
+- [x] CI runs the Knowledge/RAG suite against real PostgreSQL + pgvector
+- [x] `docs/knowledge.md` + documentation updates
 
 ## Phase 5 — Workflow Engine ⬜
 - [ ] Workflow models, triggers, nodes, conditions, execution engine, logs, scheduler
