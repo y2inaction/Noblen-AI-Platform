@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ApprovalOut(BaseModel):
@@ -28,6 +28,11 @@ class ApprovalOut(BaseModel):
     rejected_by: uuid.UUID | None
     rejected_at: datetime | None
     created_at: datetime
+    # Noblen AI 3.0 (M1)
+    run_id: uuid.UUID | None = None
+    risk_level: str | None = None
+    modified_payload: dict[str, Any] | None = None
+    decision_note: str | None = None
 
 
 class ApprovalListOut(BaseModel):
@@ -39,3 +44,14 @@ class ApprovalDecisionOut(BaseModel):
     approval: ApprovalOut
     # Present when approving resumed the run to completion.
     execution: dict[str, Any] | None = None
+
+
+class ApprovalDecisionIn(BaseModel):
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class ApprovalModifyIn(BaseModel):
+    """Approve with edited arguments (re-validated against the tool's schema)."""
+
+    arguments: dict[str, Any]
+    note: str | None = Field(default=None, max_length=2000)

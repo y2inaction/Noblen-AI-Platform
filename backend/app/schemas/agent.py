@@ -113,7 +113,7 @@ class ExecutionMessage(BaseModel):
 
 
 class ExecutionResponse(BaseModel):
-    status: str  # completed | awaiting_approval
+    status: str  # completed | awaiting_approval | escalated
     conversation_id: uuid.UUID
     agent_id: uuid.UUID
     agent_version_id: uuid.UUID
@@ -121,3 +121,6 @@ class ExecutionResponse(BaseModel):
     approval_id: uuid.UUID | None = None
     tool_name: str | None = None
     usage: dict[str, Any] = Field(default_factory=dict)
+    # Noblen AI 3.0 (M1): every execution is a traceable run.
+    run_id: uuid.UUID | None = None
+    escalation_reason: str | None = None

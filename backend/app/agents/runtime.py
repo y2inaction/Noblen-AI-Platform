@@ -1,9 +1,24 @@
 """Agent Runtime — the controlled, provider-agnostic agentic execution loop.
 
-All model calls go through the Phase 2 AI Gateway; the runtime never touches a
-vendor SDK. It resolves the runnable version, builds scoped context/memory/tools,
-runs a bounded generate→tool loop, enforces tool permissions server-side (creating
-human approvals where required), persists operational messages, and records usage.
+All model calls go through the AI Gateway; the runtime never touches a vendor
+SDK. It resolves the runnable version, builds scoped context/memory/tools, runs a
+bounded generate→tool loop, enforces tool permissions server-side (creating human
+approvals where required), persists operational messages, and records usage.
+
+Noblen AI 3.0 (M1) adds *controlled autonomy* on top of the Phase 3 loop:
+
+- Every execution is an `AgentRun` with an append-only `AgentRunStep` trace
+  (model calls, tool calls, approvals, escalations) and token/cost totals.
+- Tool authorization is the intersection of the agent's tool bindings and the
+  *initiating user's current* RBAC permissions (`ToolHandler.required_permission`);
+  an agent can never be used to exceed the rights of the person who ran it.
+- A tool's code-declared `risk_level` feeds the policy: HIGH risk always needs
+  human approval, whatever the binding says.
+- Exceptions escalate instead of erroring: the agent may call
+  `escalate_to_human`, and exhausted runtime budgets end the run ESCALATED.
+- Resuming after an approval re-authorizes the call (kill switch: a paused agent,
+  a disabled tool or a revoked permission stops it), executes on behalf of the
+  initiator, and answers every other tool call of the same model turn.
 """
 
 from __future__ import annotations
@@ -12,6 +27,7 @@ import json
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -21,27 +37,65 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents import approvals as approval_service
 from app.agents import conversations as conversation_service
 from app.agents import registry as agent_registry
-from app.agents.errors import AgentInactive, RuntimeLimitExceeded
-from app.agents.memory import load_messages
+from app.agents.errors import AgentInactive
+from app.agents.memory import load_run_context
 from app.agents.tools.base import ToolContext
 from app.agents.tools.registry import ToolRegistry, tool_registry, validate_arguments
+from app.ai.errors import AIError
 from app.ai.gateway import AIGateway, get_ai_gateway
-from app.ai.types import GenerationRequest, Message, ToolCall, ToolSpec
+from app.ai.types import GenerationRequest, GenerationResponse, Message, ToolCall, ToolSpec
 from app.core.config import settings
 from app.core.logging import bind_context, get_logger
 from app.models.agent import Agent, AgentVersion
-from app.models.enums import AgentStatus, ToolPermissionMode
+from app.models.approval import Approval
+from app.models.enums import (
+    AgentStatus,
+    MembershipStatus,
+    RunStatus,
+    RunStepStatus,
+    RunStepType,
+    ToolPermissionMode,
+    ToolRiskLevel,
+)
+from app.models.membership import OrganizationMember
 from app.models.organization import Organization
+from app.models.run import AgentRun, AgentRunStep
 from app.models.tool import AgentTool, Tool
+from app.models.user import User
+from app.rbac.permissions import role_has_permission
 from app.services import ai_usage_service
+from app.services.audit_service import record_audit
 
 logger = get_logger("agents.runtime")
+
+ESCALATE_TOOL_NAME = "escalate_to_human"
+
+# A runtime control tool, always offered to the model. It is not a registered
+# handler: calling it ends the run ESCALATED for a human operator.
+ESCALATE_TOOL = ToolSpec(
+    name=ESCALATE_TOOL_NAME,
+    description=(
+        "Hand this task to a human operator. Use when you cannot complete the task "
+        "safely or correctly: missing information or permissions, an unexpected "
+        "exception, a request outside your role, or a decision that needs human judgement."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {"reason": {"type": "string", "description": "Why a human is needed."}},
+        "required": ["reason"],
+        "additionalProperties": False,
+    },
+)
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
 
 
 @dataclass
 class _ToolBinding:
     handler: Any
-    permission_mode: str
+    permission_mode: str  # effective mode: configured mode combined with risk level
     input_schema: dict[str, Any]
     description: str
 
@@ -77,7 +131,7 @@ class UsageAccumulator:
 
 @dataclass
 class RuntimeResult:
-    status: str  # completed | awaiting_approval
+    status: str  # completed | awaiting_approval | escalated
     conversation_id: uuid.UUID
     agent_id: uuid.UUID
     agent_version_id: uuid.UUID
@@ -85,6 +139,21 @@ class RuntimeResult:
     approval_id: uuid.UUID | None = None
     tool_name: str | None = None
     usage: dict[str, Any] = field(default_factory=dict)
+    run_id: uuid.UUID | None = None
+    escalation_reason: str | None = None
+
+
+@dataclass
+class _RunState:
+    """Everything one loop invocation needs, bundled to keep signatures small."""
+
+    run: AgentRun
+    agent: Agent
+    version: AgentVersion
+    context: ToolContext
+    bindings: dict[str, _ToolBinding]
+    specs: list[ToolSpec]
+    usage: UsageAccumulator = field(default_factory=UsageAccumulator)
 
 
 class AgentRuntime:
@@ -177,13 +246,16 @@ class AgentRuntime:
             handler = self._tools.get_by_identifier(tool.handler_identifier)
             if handler is None:
                 continue  # only registered handlers may ever run
-            mode = agent_tool.permission_mode or tool.permission_mode
-            bindings[tool.name] = _ToolBinding(
+            configured = agent_tool.permission_mode or tool.permission_mode
+            binding = _ToolBinding(
                 handler=handler,
-                permission_mode=mode,
+                permission_mode=handler.effective_mode(configured),
                 input_schema=tool.input_schema or {},
                 description=tool.description,
             )
+            bindings[tool.name] = binding
+            if binding.permission_mode == ToolPermissionMode.DISABLED.value:
+                continue  # never advertise a tool the agent cannot use
             specs.append(
                 ToolSpec(
                     name=tool.name,
@@ -191,7 +263,36 @@ class AgentRuntime:
                     input_schema=tool.input_schema or {"type": "object", "properties": {}},
                 )
             )
+        specs.append(ESCALATE_TOOL)
         return bindings, specs
+
+    async def _build_state(
+        self, db: AsyncSession, run: AgentRun, agent: Agent, version: AgentVersion
+    ) -> _RunState:
+        context = ToolContext(
+            organization_id=run.organization_id,
+            user_id=run.initiated_by,
+            agent_id=agent.id,
+            conversation_id=run.conversation_id,
+            org_settings=await self._org_settings(db, run.organization_id),
+            knowledge_search=self._build_knowledge_search(
+                db, run.organization_id, agent.id, run.initiated_by
+            ),
+        )
+        bindings, specs = await self._load_tools(db, run.organization_id, agent.id)
+        return _RunState(
+            run=run, agent=agent, version=version, context=context, bindings=bindings, specs=specs
+        )
+
+    async def _context_messages(self, db: AsyncSession, state: _RunState) -> list[Message]:
+        return await load_run_context(
+            db,
+            state.run.organization_id,
+            state.run.conversation_id,  # type: ignore[arg-type]
+            run_start_sequence=state.run.context_start_sequence,
+            mode=state.version.memory_configuration.get("mode", state.agent.memory_mode),
+            memory_configuration=state.version.memory_configuration,
+        )
 
     # ---- public entrypoints ---------------------------------------------- #
     async def execute(
@@ -220,10 +321,8 @@ class AgentRuntime:
         # Ensure the conversation belongs to this tenant.
         await conversation_service.get_conversation(db, organization_id, conversation_id)
 
-        bind_context(agent_id=str(agent_id), agent_version_id=str(version.id))
-
         # Persist the incoming user message before building context.
-        await conversation_service.add_message(
+        user_message = await conversation_service.add_message(
             db,
             organization_id,
             conversation_id,
@@ -231,33 +330,31 @@ class AgentRuntime:
             content=input_message,
             created_by=user_id,
         )
-
-        context = ToolContext(
+        run = AgentRun(
             organization_id=organization_id,
-            user_id=user_id,
             agent_id=agent_id,
+            agent_version_id=version.id,
             conversation_id=conversation_id,
-            org_settings=await self._org_settings(db, organization_id),
-            knowledge_search=self._build_knowledge_search(db, organization_id, agent_id, user_id),
+            initiated_by=user_id,
+            status=RunStatus.RUNNING.value,
+            context_start_sequence=user_message.sequence,
+            started_at=_now(),
         )
-        bindings, specs = await self._load_tools(db, organization_id, agent_id)
-        messages = await load_messages(
+        db.add(run)
+        await db.flush()
+        bind_context(agent_id=str(agent_id), agent_version_id=str(version.id), run_id=str(run.id))
+        await record_audit(
             db,
-            organization_id,
-            conversation_id,
-            mode=version.memory_configuration.get("mode", agent.memory_mode),
-            memory_configuration=version.memory_configuration,
+            action="agent.run_started",
+            user_id=user_id,
+            organization_id=organization_id,
+            target_type="agent_run",
+            target_id=str(run.id),
+            metadata={"agent_id": str(agent_id), "agent_version_id": str(version.id)},
         )
-        return await self._loop(
-            db,
-            context=context,
-            agent=agent,
-            version=version,
-            bindings=bindings,
-            specs=specs,
-            messages=messages,
-            usage=UsageAccumulator(),
-        )
+
+        state = await self._build_state(db, run, agent, version)
+        return await self._loop(db, state, await self._context_messages(db, state))
 
     async def resume_after_approval(
         self,
@@ -265,115 +362,137 @@ class AgentRuntime:
         *,
         organization_id: uuid.UUID,
         user_id: uuid.UUID,
-        approval: Any,
+        approval: Approval,
         approved: bool,
     ) -> RuntimeResult:
-        """Continue a run after a human approves/rejects a gated tool call."""
+        """Continue a run after a human approves/rejects a gated tool call.
+
+        `user_id` is the reviewer; tools still execute on behalf of the user who
+        started the run.
+        """
+        run = await self._run_for_approval(db, organization_id, approval, user_id)
         agent, version = await agent_registry.resolve_runnable_version(
-            db, organization_id, approval.agent_id
+            db, organization_id, run.agent_id, version_id=run.agent_version_id
         )
-        conversation_id = approval.conversation_id
-        context = ToolContext(
-            organization_id=organization_id,
-            user_id=user_id,
-            agent_id=approval.agent_id,
-            conversation_id=conversation_id,
-            org_settings=await self._org_settings(db, organization_id),
-            knowledge_search=self._build_knowledge_search(
-                db, organization_id, approval.agent_id, user_id
-            ),
-        )
-        bindings, specs = await self._load_tools(db, organization_id, approval.agent_id)
+        state = await self._build_state(db, run, agent, version)
+        run.status = RunStatus.RUNNING.value
+        bind_context(agent_id=str(agent.id), run_id=str(run.id))
 
-        # Produce the tool-result message for the gated call.
-        if approved:
-            binding = bindings.get(approval.tool_name)
-            if binding is None:
-                tool_output = {"error": "tool is no longer available"}
-            else:
-                result = await binding.handler.execute(context, approval.request_payload)
-                tool_output = result.output if result.ok else {"error": result.error}
-        else:
-            tool_output = {"error": "Tool call was rejected by a human reviewer."}
+        # Kill switch: an agent paused/archived while waiting does not continue.
+        if agent.status != AgentStatus.ACTIVE.value:
+            await self._add_step(
+                db,
+                run,
+                RunStepType.TOOL_CALL,
+                RunStepStatus.DENIED,
+                name=approval.tool_name,
+                tool_call_id=approval.tool_call_id,
+                error=f"Agent is {agent.status}.",
+            )
+            await self._store_tool_result(
+                db,
+                state,
+                approval.tool_call_id,
+                approval.tool_name,
+                {"error": f"The agent was {agent.status.lower()} before this action ran."},
+            )
+            return await self._escalate(
+                db, state, f"The agent was {agent.status.lower()} while awaiting approval."
+            )
 
-        await conversation_service.add_message(
-            db,
-            organization_id,
-            conversation_id,
-            role="tool",
-            content=json.dumps(tool_output),
-            metadata={"tool_call_id": approval.tool_call_id, "name": approval.tool_name},
-            agent_version_id=version.id,
-        )
+        turn_calls, answered = await self._pending_turn(db, run, approval)
+        for tool_call in turn_calls:
+            if tool_call.id in answered:
+                continue
+            if tool_call.id == approval.tool_call_id:
+                if approved:
+                    payload = (
+                        approval.modified_payload
+                        if approval.modified_payload is not None
+                        else approval.request_payload
+                    )
+                    gated = ToolCall(id=tool_call.id, name=approval.tool_name, arguments=payload)
+                    await self._handle_tool_call(db, state, gated, pre_approved=True)
+                else:
+                    note = (
+                        f" Reviewer note: {approval.decision_note}"
+                        if approval.decision_note
+                        else ""
+                    )
+                    await self._add_step(
+                        db,
+                        run,
+                        RunStepType.TOOL_CALL,
+                        RunStepStatus.DENIED,
+                        name=approval.tool_name,
+                        tool_call_id=tool_call.id,
+                        error="Rejected by a human reviewer.",
+                    )
+                    await self._store_tool_result(
+                        db,
+                        state,
+                        tool_call.id,
+                        approval.tool_name,
+                        {"error": "Tool call was rejected by a human reviewer." + note},
+                    )
+                continue
+            outcome = await self._handle_tool_call(db, state, tool_call)
+            if outcome["kind"] == "approval":
+                return self._awaiting(state, outcome["approval_id"], tool_call.name)
+            if outcome["kind"] == "escalated":
+                result: RuntimeResult = outcome["result"]
+                return result
 
-        messages = await load_messages(
-            db,
-            organization_id,
-            conversation_id,
-            mode=version.memory_configuration.get("mode", agent.memory_mode),
-            memory_configuration=version.memory_configuration,
-        )
-        return await self._loop(
-            db,
-            context=context,
-            agent=agent,
-            version=version,
-            bindings=bindings,
-            specs=specs,
-            messages=messages,
-            usage=UsageAccumulator(),
-        )
+        return await self._loop(db, state, await self._context_messages(db, state))
 
     # ---- the loop --------------------------------------------------------- #
     async def _loop(
-        self,
-        db: AsyncSession,
-        *,
-        context: ToolContext,
-        agent: Agent,
-        version: AgentVersion,
-        bindings: dict[str, _ToolBinding],
-        specs: list[ToolSpec],
-        messages: list[Message],
-        usage: UsageAccumulator,
+        self, db: AsyncSession, state: _RunState, messages: list[Message]
     ) -> RuntimeResult:
+        run, version, context = state.run, state.version, state.context
         started = time.perf_counter()
         tool_calls_made = 0
 
         for iteration in range(settings.AGENT_MAX_ITERATIONS + 1):
             if iteration >= settings.AGENT_MAX_ITERATIONS:
-                raise RuntimeLimitExceeded("Agent exceeded the maximum iteration budget.")
+                return await self._escalate(
+                    db, state, "The agent exceeded its maximum iteration budget."
+                )
             if (time.perf_counter() - started) > settings.AGENT_MAX_RUNTIME_SECONDS:
-                raise RuntimeLimitExceeded("Agent exceeded the maximum runtime budget.")
+                return await self._escalate(
+                    db, state, "The agent exceeded its maximum runtime budget."
+                )
 
             request = GenerationRequest(
                 messages=messages,
                 system=version.system_instructions or None,
                 provider=version.provider,
                 model=version.model,
+                fallbacks=list((version.configuration or {}).get("fallback_models", [])),
                 temperature=version.temperature,
                 max_output_tokens=version.max_tokens,
-                tools=specs,
+                tools=state.specs,
                 organization_id=context.organization_id,
                 user_id=context.user_id,
                 agent_id=context.agent_id,
                 agent_version_id=version.id,
                 conversation_id=context.conversation_id,
             )
-            response = await self._gateway.generate(request)
-            usage.add(response)
-            await ai_usage_service.record_generation(
-                db,
-                organization_id=context.organization_id,
-                user_id=context.user_id,
-                response=response,
-                operation="agent",
-                agent_id=context.agent_id,
-                agent_version_id=version.id,
-                conversation_id=context.conversation_id,
-            )
+            try:
+                response = await self._gateway.generate(request)
+            except AIError as err:
+                await self._fail(db, state, err)
+                raise
+            await self._record_model_call(db, state, response)
+
+            if response.finish_reason in {"refusal", "content_filter"}:
+                return await self._escalate(db, state, "The model declined to perform this task.")
 
             if not response.tool_calls:
+                if response.finish_reason in {"max_tokens", "length"}:
+                    return await self._escalate(
+                        db, state, "The model's output was truncated (max tokens)."
+                    )
                 message = await conversation_service.add_message(
                     db,
                     context.organization_id,
@@ -383,6 +502,7 @@ class AgentRuntime:
                     metadata={"provider": response.provider, "model": response.model},
                     agent_version_id=version.id,
                 )
+                await self._finish(db, state, RunStatus.COMPLETED)
                 logger.info(
                     "agent_execution_completed",
                     conversation_id=str(context.conversation_id),
@@ -393,14 +513,15 @@ class AgentRuntime:
                 return RuntimeResult(
                     status="completed",
                     conversation_id=context.conversation_id,  # type: ignore[arg-type]
-                    agent_id=agent.id,
+                    agent_id=state.agent.id,
                     agent_version_id=version.id,
                     message={
                         "id": str(message.id),
                         "role": "assistant",
                         "content": response.content,
                     },
-                    usage=usage.as_dict(),
+                    usage=state.usage.as_dict(),
+                    run_id=run.id,
                 )
 
             # The model requested tools — persist the assistant tool-call message.
@@ -422,20 +543,12 @@ class AgentRuntime:
             )
 
             for tool_call in response.tool_calls:
-                outcome = await self._handle_tool_call(
-                    db, context=context, agent=agent, tool_call=tool_call, bindings=bindings
-                )
+                outcome = await self._handle_tool_call(db, state, tool_call)
                 if outcome["kind"] == "approval":
-                    return RuntimeResult(
-                        status="awaiting_approval",
-                        conversation_id=context.conversation_id,  # type: ignore[arg-type]
-                        agent_id=agent.id,
-                        agent_version_id=version.id,
-                        approval_id=outcome["approval_id"],
-                        tool_name=tool_call.name,
-                        usage=usage.as_dict(),
-                    )
-                # executed / disabled / unknown => a tool-result message was stored
+                    return self._awaiting(state, outcome["approval_id"], tool_call.name)
+                if outcome["kind"] == "escalated":
+                    result: RuntimeResult = outcome["result"]
+                    return result
                 messages.append(
                     Message(
                         role="tool",
@@ -447,68 +560,131 @@ class AgentRuntime:
                 if outcome["kind"] == "executed":
                     tool_calls_made += 1
                     if tool_calls_made >= settings.AGENT_MAX_TOOL_CALLS:
-                        raise RuntimeLimitExceeded("Agent exceeded the maximum tool-call budget.")
+                        return await self._escalate(
+                            db, state, "The agent exceeded its maximum tool-call budget."
+                        )
 
-        raise RuntimeLimitExceeded("Agent exceeded the maximum iteration budget.")
+        return await self._escalate(db, state, "The agent exceeded its maximum iteration budget.")
 
+    # ---- tool calls ------------------------------------------------------- #
     async def _handle_tool_call(
         self,
         db: AsyncSession,
-        *,
-        context: ToolContext,
-        agent: Agent,
+        state: _RunState,
         tool_call: ToolCall,
-        bindings: dict[str, _ToolBinding],
+        *,
+        pre_approved: bool = False,
     ) -> dict[str, Any]:
-        binding = bindings.get(tool_call.name)
+        run = state.run
 
-        async def _store_tool_result(output: dict[str, Any]) -> str:
-            content = json.dumps(output)
-            await conversation_service.add_message(
+        async def _deny(reason: str) -> dict[str, Any]:
+            await self._add_step(
                 db,
-                context.organization_id,
-                context.conversation_id,  # type: ignore[arg-type]
-                role="tool",
-                content=content,
-                metadata={"tool_call_id": tool_call.id, "name": tool_call.name},
+                run,
+                RunStepType.TOOL_CALL,
+                RunStepStatus.DENIED,
+                name=tool_call.name,
+                tool_call_id=tool_call.id,
+                error=reason,
             )
-            return content
+            await record_audit(
+                db,
+                action="agent.tool_denied",
+                user_id=run.initiated_by,
+                organization_id=run.organization_id,
+                target_type="agent_run",
+                target_id=str(run.id),
+                metadata={"tool": tool_call.name, "reason": reason},
+            )
+            content = await self._store_tool_result(
+                db, state, tool_call.id, tool_call.name, {"error": reason}
+            )
+            return {"kind": "denied", "content": content}
 
+        if tool_call.name == ESCALATE_TOOL_NAME:
+            reason = str(tool_call.arguments.get("reason") or "The agent requested human help.")
+            await self._store_tool_result(
+                db, state, tool_call.id, tool_call.name, {"status": "escalated"}
+            )
+            return {"kind": "escalated", "result": await self._escalate(db, state, reason)}
+
+        binding = state.bindings.get(tool_call.name)
         if binding is None:
-            return {
-                "kind": "unknown",
-                "content": await _store_tool_result(
-                    {"error": f"tool '{tool_call.name}' is not available to this agent"}
-                ),
-            }
-
+            return await _deny(f"tool '{tool_call.name}' is not available to this agent")
         if binding.permission_mode == ToolPermissionMode.DISABLED.value:
-            return {
-                "kind": "disabled",
-                "content": await _store_tool_result(
-                    {"error": f"tool '{tool_call.name}' is disabled"}
-                ),
-            }
+            return await _deny(f"tool '{tool_call.name}' is disabled")
+
+        # The initiating user's *current* permissions cap what the agent may do.
+        required = binding.handler.required_permission
+        if required is not None:
+            role = await self._initiator_role(db, run)
+            if role is None:
+                return await _deny("the person who started this task no longer has access")
+            if not role_has_permission(role, required):
+                return await _deny(
+                    f"the person who started this task lacks the permission '{required}' "
+                    f"required by '{tool_call.name}'"
+                )
 
         # Validate arguments server-side before anything else.
         arg_error = validate_arguments(binding.input_schema, tool_call.arguments)
         if arg_error is not None:
+            await self._add_step(
+                db,
+                run,
+                RunStepType.TOOL_CALL,
+                RunStepStatus.FAILED,
+                name=tool_call.name,
+                tool_call_id=tool_call.id,
+                error=f"invalid arguments: {arg_error}",
+            )
             return {
                 "kind": "executed",
-                "content": await _store_tool_result({"error": f"invalid arguments: {arg_error}"}),
+                "content": await self._store_tool_result(
+                    db,
+                    state,
+                    tool_call.id,
+                    tool_call.name,
+                    {"error": f"invalid arguments: {arg_error}"},
+                ),
             }
 
-        if binding.permission_mode == ToolPermissionMode.APPROVAL_REQUIRED.value:
+        needs_approval = binding.permission_mode == ToolPermissionMode.APPROVAL_REQUIRED.value
+        if needs_approval and not pre_approved:
             approval = await approval_service.create_approval(
                 db,
-                context.organization_id,
-                agent_id=agent.id,
-                conversation_id=context.conversation_id,
+                run.organization_id,
+                agent_id=state.agent.id,
+                conversation_id=run.conversation_id,
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
                 request_payload=tool_call.arguments,
-                requested_by=context.user_id,
-                reason=f"Agent requested tool '{tool_call.name}' (approval required).",
+                requested_by=run.initiated_by,
+                reason=(
+                    f"Agent requested tool '{tool_call.name}' "
+                    f"({binding.handler.risk_level} risk; approval required)."
+                ),
+            )
+            approval.run_id = run.id
+            approval.risk_level = binding.handler.risk_level
+            run.status = RunStatus.AWAITING_APPROVAL.value
+            await self._add_step(
+                db,
+                run,
+                RunStepType.APPROVAL,
+                RunStepStatus.PENDING,
+                name=tool_call.name,
+                tool_call_id=tool_call.id,
+                detail={"approval_id": str(approval.id), "risk_level": approval.risk_level},
+            )
+            await record_audit(
+                db,
+                action="agent.approval_requested",
+                user_id=run.initiated_by,
+                organization_id=run.organization_id,
+                target_type="approval",
+                target_id=str(approval.id),
+                metadata={"tool": tool_call.name, "run_id": str(run.id)},
             )
             logger.info(
                 "agent_tool_approval_required",
@@ -517,11 +693,333 @@ class AgentRuntime:
             )
             return {"kind": "approval", "approval_id": approval.id}
 
-        # AUTO — execute now.
-        result = await binding.handler.execute(context, tool_call.arguments)
-        output = result.output if result.ok else {"error": result.error}
-        logger.info("agent_tool_executed", tool_name=tool_call.name, ok=result.ok)
-        return {"kind": "executed", "content": await _store_tool_result(output)}
+        # AUTO (or approved) — execute now.
+        started = time.perf_counter()
+        try:
+            result = await binding.handler.execute(state.context, tool_call.arguments)
+            output = result.output if result.ok else {"error": result.error}
+            ok = result.ok
+        except Exception as exc:  # noqa: BLE001 — never leak internals to the model
+            logger.exception("agent_tool_crashed", tool_name=tool_call.name)
+            output = {"error": f"The tool failed unexpectedly ({type(exc).__name__})."}
+            ok = False
+        await self._add_step(
+            db,
+            run,
+            RunStepType.TOOL_CALL,
+            RunStepStatus.SUCCEEDED if ok else RunStepStatus.FAILED,
+            name=tool_call.name,
+            tool_call_id=tool_call.id,
+            detail={
+                "risk_level": binding.handler.risk_level,
+                "argument_keys": sorted(tool_call.arguments),
+                "approved": pre_approved,
+            },
+            error=None if ok else str(output.get("error")),
+            latency_ms=int((time.perf_counter() - started) * 1000),
+        )
+        run.tool_calls += 1
+        if pre_approved or binding.handler.risk_level != ToolRiskLevel.LOW.value:
+            await record_audit(
+                db,
+                action="agent.tool_executed",
+                user_id=run.initiated_by,
+                organization_id=run.organization_id,
+                target_type="agent_run",
+                target_id=str(run.id),
+                metadata={
+                    "tool": tool_call.name,
+                    "risk_level": binding.handler.risk_level,
+                    "approved": pre_approved,
+                    "ok": ok,
+                },
+            )
+        logger.info("agent_tool_executed", tool_name=tool_call.name, ok=ok)
+        return {
+            "kind": "executed",
+            "content": await self._store_tool_result(
+                db, state, tool_call.id, tool_call.name, output
+            ),
+        }
+
+    async def _store_tool_result(
+        self,
+        db: AsyncSession,
+        state: _RunState,
+        tool_call_id: str,
+        tool_name: str,
+        output: dict[str, Any],
+    ) -> str:
+        content = json.dumps(output, default=str)
+        await conversation_service.add_message(
+            db,
+            state.run.organization_id,
+            state.run.conversation_id,  # type: ignore[arg-type]
+            role="tool",
+            content=content,
+            metadata={"tool_call_id": tool_call_id, "name": tool_name},
+            agent_version_id=state.version.id,
+        )
+        return content
+
+    async def _initiator_role(self, db: AsyncSession, run: AgentRun) -> str | None:
+        """The initiator's role *now* (not at run start): revocations apply at once."""
+        if run.initiated_by is None:
+            return None
+        user = await db.get(User, run.initiated_by)
+        if user is not None and user.is_superuser:
+            return "SUPER_ADMIN"
+        member = (
+            await db.execute(
+                select(OrganizationMember).where(
+                    OrganizationMember.user_id == run.initiated_by,
+                    OrganizationMember.organization_id == run.organization_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if member is None or member.status != MembershipStatus.ACTIVE.value:
+            return None
+        return member.role_name
+
+    async def _pending_turn(
+        self, db: AsyncSession, run: AgentRun, approval: Approval
+    ) -> tuple[list[ToolCall], set[str]]:
+        """The tool calls of the model turn containing the gated call, and which of
+        them already have results."""
+        rows = await conversation_service.get_messages(
+            db,
+            run.organization_id,
+            run.conversation_id,  # type: ignore[arg-type]
+        )
+        turn: list[ToolCall] = []
+        for row in reversed(rows):
+            calls = (row.message_metadata or {}).get("tool_calls") or []
+            if row.role == "assistant" and any(c.get("id") == approval.tool_call_id for c in calls):
+                turn = [ToolCall(**c) for c in calls]
+                break
+        if not turn:
+            # Legacy/partial history: fall back to just the gated call.
+            turn = [ToolCall(id=approval.tool_call_id, name=approval.tool_name)]
+        answered = {
+            (row.message_metadata or {}).get("tool_call_id") for row in rows if row.role == "tool"
+        }
+        return turn, {a for a in answered if a}
+
+    async def _run_for_approval(
+        self,
+        db: AsyncSession,
+        organization_id: uuid.UUID,
+        approval: Approval,
+        reviewer_id: uuid.UUID,
+    ) -> AgentRun:
+        if approval.run_id is not None:
+            run = (
+                await db.execute(
+                    select(AgentRun).where(
+                        AgentRun.id == approval.run_id,
+                        AgentRun.organization_id == organization_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if run is not None:
+                return run
+        # Approvals created before runs existed: adopt the conversation's latest
+        # user message as the run boundary.
+        rows = await conversation_service.get_messages(
+            db,
+            organization_id,
+            approval.conversation_id,  # type: ignore[arg-type]
+        )
+        start = next((r.sequence for r in reversed(rows) if r.role == "user"), 0)
+        agent, version = await agent_registry.resolve_runnable_version(
+            db,
+            organization_id,
+            approval.agent_id,  # type: ignore[arg-type]
+        )
+        run = AgentRun(
+            organization_id=organization_id,
+            agent_id=agent.id,
+            agent_version_id=version.id,
+            conversation_id=approval.conversation_id,
+            initiated_by=approval.requested_by or reviewer_id,
+            status=RunStatus.AWAITING_APPROVAL.value,
+            context_start_sequence=start,
+            started_at=_now(),
+        )
+        db.add(run)
+        await db.flush()
+        approval.run_id = run.id
+        return run
+
+    # ---- run bookkeeping -------------------------------------------------- #
+    async def _add_step(
+        self,
+        db: AsyncSession,
+        run: AgentRun,
+        step_type: RunStepType,
+        status: RunStepStatus,
+        *,
+        name: str | None = None,
+        tool_call_id: str | None = None,
+        detail: dict[str, Any] | None = None,
+        error: str | None = None,
+        provider: str | None = None,
+        model: str | None = None,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        latency_ms: int = 0,
+    ) -> AgentRunStep:
+        run.step_count += 1
+        step = AgentRunStep(
+            organization_id=run.organization_id,
+            run_id=run.id,
+            sequence=run.step_count,
+            step_type=step_type.value,
+            status=status.value,
+            name=name,
+            tool_call_id=tool_call_id,
+            detail=detail,
+            error=error,
+            provider=provider,
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            latency_ms=latency_ms,
+        )
+        db.add(step)
+        await db.flush()
+        return step
+
+    async def _record_model_call(
+        self, db: AsyncSession, state: _RunState, response: GenerationResponse
+    ) -> None:
+        run, context = state.run, state.context
+        state.usage.add(response)
+        run.model_calls += 1
+        run.input_tokens += response.input_tokens
+        run.output_tokens += response.output_tokens
+        if response.estimated_cost is not None:
+            run.estimated_cost = (run.estimated_cost or Decimal("0")) + response.estimated_cost
+        run.last_provider = response.provider
+        run.last_model = response.model
+        await self._add_step(
+            db,
+            run,
+            RunStepType.MODEL_CALL,
+            RunStepStatus.SUCCEEDED,
+            name=response.model,
+            detail={
+                "finish_reason": response.finish_reason,
+                "tool_calls": [tc.name for tc in response.tool_calls],
+                "fallback_from": response.metadata.get("fallback_from"),
+            },
+            provider=response.provider,
+            model=response.model,
+            input_tokens=response.input_tokens,
+            output_tokens=response.output_tokens,
+            latency_ms=response.latency_ms,
+        )
+        await ai_usage_service.record_generation(
+            db,
+            organization_id=context.organization_id,
+            user_id=context.user_id,
+            response=response,
+            operation="agent",
+            agent_id=context.agent_id,
+            agent_version_id=state.version.id,
+            conversation_id=context.conversation_id,
+        )
+
+    def _awaiting(self, state: _RunState, approval_id: uuid.UUID, tool_name: str) -> RuntimeResult:
+        return RuntimeResult(
+            status="awaiting_approval",
+            conversation_id=state.context.conversation_id,  # type: ignore[arg-type]
+            agent_id=state.agent.id,
+            agent_version_id=state.version.id,
+            approval_id=approval_id,
+            tool_name=tool_name,
+            usage=state.usage.as_dict(),
+            run_id=state.run.id,
+        )
+
+    async def _finish(
+        self,
+        db: AsyncSession,
+        state: _RunState,
+        status: RunStatus,
+        extra: dict[str, Any] | None = None,
+    ) -> None:
+        run = state.run
+        run.status = status.value
+        run.completed_at = _now()
+        await record_audit(
+            db,
+            action=f"agent.run_{status.value.lower()}",
+            user_id=run.initiated_by,
+            organization_id=run.organization_id,
+            target_type="agent_run",
+            target_id=str(run.id),
+            metadata={
+                "agent_id": str(run.agent_id),
+                "model": run.last_model,
+                "steps": run.step_count,
+                **(extra or {}),
+            },
+        )
+
+    async def _escalate(self, db: AsyncSession, state: _RunState, reason: str) -> RuntimeResult:
+        run = state.run
+        await self._add_step(
+            db,
+            run,
+            RunStepType.ESCALATION,
+            RunStepStatus.SUCCEEDED,
+            name=ESCALATE_TOOL_NAME,
+            detail={"reason": reason},
+        )
+        run.escalation_reason = reason
+        await self._finish(db, state, RunStatus.ESCALATED, {"reason": reason})
+        text = f"This task has been escalated to a human operator: {reason}"
+        message = await conversation_service.add_message(
+            db,
+            run.organization_id,
+            run.conversation_id,  # type: ignore[arg-type]
+            role="assistant",
+            content=text,
+            metadata={"escalated": True},
+            agent_version_id=state.version.id,
+        )
+        logger.info("agent_run_escalated", reason=reason)
+        return RuntimeResult(
+            status="escalated",
+            conversation_id=run.conversation_id,  # type: ignore[arg-type]
+            agent_id=state.agent.id,
+            agent_version_id=state.version.id,
+            message={"id": str(message.id), "role": "assistant", "content": text},
+            usage=state.usage.as_dict(),
+            run_id=run.id,
+            escalation_reason=reason,
+        )
+
+    async def _fail(self, db: AsyncSession, state: _RunState, err: AIError) -> None:
+        """Persist a FAILED run before the error propagates to the caller.
+
+        The request transaction is rolled back on errors, so the run, its trace and
+        the triggering message are committed here to keep failures observable.
+        """
+        run = state.run
+        run.error_code = err.error_code
+        await self._add_step(
+            db,
+            run,
+            RunStepType.MODEL_CALL,
+            RunStepStatus.FAILED,
+            error=err.error_code,
+            provider=getattr(err, "provider", None),
+            model=getattr(err, "model", None),
+        )
+        await self._finish(db, state, RunStatus.FAILED, {"error_code": err.error_code})
+        await db.commit()
 
 
 def get_agent_runtime() -> AgentRuntime:

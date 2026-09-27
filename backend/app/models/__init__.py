@@ -29,6 +29,7 @@ from app.models.knowledge import (
 from app.models.membership import OrganizationMember
 from app.models.organization import Organization
 from app.models.rbac import Permission, Role, role_permissions
+from app.models.run import AgentRun, AgentRunStep
 from app.models.team import Team, TeamMember
 from app.models.tool import AgentTool, Tool
 from app.models.user import User
@@ -37,6 +38,8 @@ __all__ = [
     "Base",
     "Agent",
     "AgentTool",
+    "AgentRun",
+    "AgentRunStep",
     "AgentVersion",
     "AIUsageRecord",
     "Approval",

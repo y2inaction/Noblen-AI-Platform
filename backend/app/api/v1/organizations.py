@@ -8,14 +8,14 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import TenantContext, require_permission
-from app.core.exceptions import NotFoundError, ValidationError
+from app.api.deps import TenantContext, require_permission, user_is_platform_superuser
+from app.core.exceptions import NotFoundError, PermissionDeniedError, ValidationError
 from app.db.session import get_db
 from app.models.enums import RoleName
 from app.models.membership import OrganizationMember
 from app.models.organization import Organization
 from app.models.user import User
-from app.rbac.permissions import Permission
+from app.rbac.permissions import PLATFORM_ONLY_ROLES, Permission
 from app.schemas.organization import (
     MemberWithUser,
     OrganizationPublic,
@@ -100,6 +100,8 @@ async def update_member_role(
 ) -> MemberWithUser:
     if body.role_name not in _VALID_ROLES:
         raise ValidationError(f"Unknown role '{body.role_name}'.")
+    if body.role_name in PLATFORM_ONLY_ROLES and not user_is_platform_superuser(ctx.user):
+        raise PermissionDeniedError(f"Only a platform administrator can grant '{body.role_name}'.")
 
     # Tenant-scoped lookup: the member must belong to the caller's org.
     member = (

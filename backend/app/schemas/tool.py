@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ToolOut(BaseModel):
@@ -23,6 +23,19 @@ class ToolOut(BaseModel):
     enabled: bool
     handler_identifier: str
     created_at: datetime
+    # Declared in code by the tool handler (not editable through the catalogue).
+    risk_level: str | None = None
+    required_permission: str | None = None
+
+    @model_validator(mode="after")
+    def _from_handler(self) -> ToolOut:
+        from app.agents.tools.registry import tool_registry
+
+        handler = tool_registry.get_by_identifier(self.handler_identifier)
+        if handler is not None:
+            self.risk_level = handler.risk_level
+            self.required_permission = handler.required_permission
+        return self
 
 
 class ToolListOut(BaseModel):

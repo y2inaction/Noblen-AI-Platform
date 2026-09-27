@@ -12,6 +12,7 @@ class RoleName(str, enum.Enum):
     SUPER_ADMIN = "SUPER_ADMIN"  # platform-wide administration
     ADMIN = "ADMIN"  # organization administration
     MANAGER = "MANAGER"  # team & operational management
+    OPERATOR = "OPERATOR"  # AI Operator: supervises agents, decides approvals
     MEMBER = "MEMBER"  # normal business usage
     VIEWER = "VIEWER"  # read-only access
 
@@ -78,6 +79,37 @@ class ApprovalStatus(str, enum.Enum):
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
     EXPIRED = "EXPIRED"
+
+
+class ToolRiskLevel(str, enum.Enum):
+    """Risk of a tool's side effects. HIGH always requires human approval."""
+
+    LOW = "LOW"  # read-only / internal
+    MEDIUM = "MEDIUM"  # internal side effects
+    HIGH = "HIGH"  # external, financial, destructive, contractual
+
+
+# ---- AI Workforce operations (Noblen AI 3.0, M1) ----
+class RunStatus(str, enum.Enum):
+    RUNNING = "RUNNING"
+    AWAITING_APPROVAL = "AWAITING_APPROVAL"
+    COMPLETED = "COMPLETED"
+    ESCALATED = "ESCALATED"
+    FAILED = "FAILED"
+
+
+class RunStepType(str, enum.Enum):
+    MODEL_CALL = "MODEL_CALL"
+    TOOL_CALL = "TOOL_CALL"
+    APPROVAL = "APPROVAL"
+    ESCALATION = "ESCALATION"
+
+
+class RunStepStatus(str, enum.Enum):
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    DENIED = "DENIED"
+    PENDING = "PENDING"
 
 
 # ---- Knowledge + RAG (Phase 4) ----

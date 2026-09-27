@@ -8,7 +8,6 @@ from sqlalchemy import select
 from app.agents import approvals as approval_service
 from app.agents import conversations as conversation_service
 from app.agents import registry
-from app.agents.errors import RuntimeLimitExceeded
 from app.agents.runtime import AgentRuntime
 from app.agents.tools.seed import seed_builtin_tools
 from app.ai.base import AIProvider
@@ -19,6 +18,7 @@ from app.models.approval import Approval
 from app.models.conversation import ConversationMessage
 from app.models.enums import ApprovalStatus
 from app.models.organization import Organization
+from app.models.run import AgentRun
 from app.models.tool import AgentTool, Tool
 
 
@@ -197,12 +197,17 @@ async def test_runtime_limit_exceeded_on_endless_tool_calls(db_session):
         max_retries=0,
     )
     org_id, user_id, agent_id, conv_id = await _setup(db_session, tools=["get_current_time"])
-    with pytest.raises(RuntimeLimitExceeded):
-        await AgentRuntime(gateway=gw).execute(
-            db_session,
-            organization_id=org_id,
-            user_id=user_id,
-            agent_id=agent_id,
-            conversation_id=conv_id,
-            input_message="go",
-        )
+    # Noblen AI 3.0: exhausting a budget escalates to a human operator instead of
+    # failing the request, and the run records why.
+    result = await AgentRuntime(gateway=gw).execute(
+        db_session,
+        organization_id=org_id,
+        user_id=user_id,
+        agent_id=agent_id,
+        conversation_id=conv_id,
+        input_message="go",
+    )
+    assert result.status == "escalated"
+    assert "budget" in (result.escalation_reason or "")
+    run = await db_session.get(AgentRun, result.run_id)
+    assert run is not None and run.status == "ESCALATED"

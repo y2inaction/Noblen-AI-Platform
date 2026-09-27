@@ -42,3 +42,14 @@ class Approval(UUIDMixin, TimestampMixin, TenantMixin, Base):
         Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # ---- Noblen AI 3.0 (M1) ----
+    # The run this approval pauses (NULL for approvals created before M1).
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("agent_runs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    risk_level: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Set when a reviewer approves with edited arguments; executed instead of
+    # request_payload (after re-validation against the tool's schema).
+    modified_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)

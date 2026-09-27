@@ -37,6 +37,12 @@ class Permission:
     AGENT_RUN = "agent:run"  # execute
     AGENT_MANAGE_VERSIONS = "agent:manage_versions"
     AGENT_APPROVE_ACTIONS = "agent:approve_actions"
+    # Change an agent's operating state (activate/pause) without editing its config.
+    AGENT_OPERATE = "agent:operate"
+
+    # AI Operations (Noblen AI 3.0): run traces and workforce metrics
+    RUN_VIEW = "run:view"
+    OPERATIONS_VIEW = "operations:view"
 
     # Conversations (Phase 3)
     CONVERSATION_CREATE = "conversation:create"
@@ -102,8 +108,18 @@ _MEMBER_PERMISSIONS = _VIEW_PERMISSIONS + [
     Permission.KNOWLEDGE_SEARCH,
 ]
 
-# MANAGER: operational management (member work + team + agent/workflow authoring).
-_MANAGER_PERMISSIONS = _MEMBER_PERMISSIONS + [
+# OPERATOR (AI Operator): supervises deployed agents — decides approvals,
+# activates/pauses agents, watches runs, usage and operations. Cannot author or
+# reconfigure agents, and has no member/org administration.
+_OPERATOR_PERMISSIONS = _MEMBER_PERMISSIONS + [
+    Permission.AGENT_APPROVE_ACTIONS,
+    Permission.AGENT_OPERATE,
+    Permission.ANALYTICS_VIEW,
+    Permission.AI_VIEW_USAGE,
+]
+
+# MANAGER: operational management (operator work + team + agent/workflow authoring).
+_MANAGER_PERMISSIONS = _OPERATOR_PERMISSIONS + [
     Permission.TEAM_MANAGE,
     Permission.MEMBER_INVITE,
     Permission.AGENT_CREATE,
@@ -138,9 +154,15 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
     RoleName.SUPER_ADMIN.value: [Permission.WILDCARD],
     RoleName.ADMIN.value: sorted(set(_ADMIN_PERMISSIONS)),
     RoleName.MANAGER.value: sorted(set(_MANAGER_PERMISSIONS)),
+    RoleName.OPERATOR.value: sorted(set(_OPERATOR_PERMISSIONS)),
     RoleName.MEMBER.value: sorted(set(_MEMBER_PERMISSIONS)),
     RoleName.VIEWER.value: sorted(set(_VIEW_PERMISSIONS)),
 }
+
+
+# Roles only a platform superuser may grant. SUPER_ADMIN carries the wildcard, so
+# letting an org ADMIN assign it would be a privilege escalation.
+PLATFORM_ONLY_ROLES: frozenset[str] = frozenset({RoleName.SUPER_ADMIN.value})
 
 
 def permissions_for_role(role_name: str) -> set[str]:

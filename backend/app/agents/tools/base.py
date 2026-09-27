@@ -12,7 +12,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.models.enums import ToolPermissionMode
+from app.models.enums import ToolPermissionMode, ToolRiskLevel
 
 
 @dataclass(frozen=True)
@@ -56,6 +56,25 @@ class ToolHandler(abc.ABC):
     input_schema: dict[str, Any] = {"type": "object", "properties": {}}
     output_schema: dict[str, Any] = {"type": "object", "properties": {}}
     default_permission_mode: str = ToolPermissionMode.AUTO.value
+    #: Risk of the tool's side effects. Declared in code (not the DB) so it cannot
+    #: be loosened by editing catalogue rows. HIGH always requires human approval.
+    risk_level: str = ToolRiskLevel.LOW.value
+    #: RBAC permission the *initiating user* must hold for an agent to use this
+    #: tool on their behalf — an agent can never exceed its user's rights.
+    required_permission: str | None = None
+
+    def effective_mode(self, configured_mode: str) -> str:
+        """Combine the configured permission mode with the tool's risk level.
+
+        Configuration may tighten a policy or disable a tool, but a HIGH-risk
+        tool can never run without approval.
+        """
+        if (
+            self.risk_level == ToolRiskLevel.HIGH.value
+            and configured_mode == ToolPermissionMode.AUTO.value
+        ):
+            return ToolPermissionMode.APPROVAL_REQUIRED.value
+        return configured_mode
 
     @abc.abstractmethod
     async def execute(self, context: ToolContext, arguments: dict[str, Any]) -> ToolResult:

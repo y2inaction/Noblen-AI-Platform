@@ -11,6 +11,7 @@ from typing import Any
 
 from app.agents.tools.base import ToolContext, ToolHandler, ToolResult
 from app.models.enums import ToolPermissionMode
+from app.rbac.permissions import Permission
 
 
 class GetCurrentTimeTool(ToolHandler):
@@ -40,6 +41,7 @@ class GetOrganizationSettingsTool(ToolHandler):
     input_schema = {"type": "object", "properties": {}, "additionalProperties": False}
     output_schema = {"type": "object"}
     default_permission_mode = ToolPermissionMode.AUTO.value
+    required_permission = Permission.ORG_VIEW
 
     async def execute(self, context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         # Only the safe subset placed on the context — never secrets.
@@ -85,6 +87,7 @@ class SearchKnowledgeTool(ToolHandler):
         "information relevant to a query. Returns matching passages with citations."
     )
     tool_type = "knowledge"
+    required_permission = Permission.KNOWLEDGE_SEARCH
     input_schema = {
         "type": "object",
         "properties": {

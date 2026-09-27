@@ -104,20 +104,38 @@ async def _expire_if_needed(db: AsyncSession, approval: Approval) -> None:
 
 
 async def approve(
-    db: AsyncSession, organization_id: uuid.UUID, approval_id: uuid.UUID, approver_id: uuid.UUID
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    approval_id: uuid.UUID,
+    approver_id: uuid.UUID,
+    *,
+    note: str | None = None,
+    modified_payload: dict[str, Any] | None = None,
 ) -> Approval:
+    """Approve a pending action, optionally with reviewer-edited arguments.
+
+    `modified_payload` must already be validated against the tool's schema by the
+    caller; the runtime executes it instead of the model's original arguments.
+    """
     approval = await get_approval(db, organization_id, approval_id)
     _ensure_actionable(approval)
     await _expire_if_needed(db, approval)
     approval.status = ApprovalStatus.APPROVED.value
     approval.approved_by = approver_id
     approval.approved_at = datetime.now(UTC)
+    approval.decision_note = note
+    approval.modified_payload = modified_payload
     await db.flush()
     return approval
 
 
 async def reject(
-    db: AsyncSession, organization_id: uuid.UUID, approval_id: uuid.UUID, rejecter_id: uuid.UUID
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    approval_id: uuid.UUID,
+    rejecter_id: uuid.UUID,
+    *,
+    note: str | None = None,
 ) -> Approval:
     approval = await get_approval(db, organization_id, approval_id)
     _ensure_actionable(approval)
@@ -125,5 +143,6 @@ async def reject(
     approval.status = ApprovalStatus.REJECTED.value
     approval.rejected_by = rejecter_id
     approval.rejected_at = datetime.now(UTC)
+    approval.decision_note = note
     await db.flush()
     return approval
