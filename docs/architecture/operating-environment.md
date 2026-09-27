@@ -47,14 +47,18 @@ caller cannot take, as a convenience.
 - **Rendering.** API data is always rendered as text: tool arguments, model
   answers, notification bodies and step outputs. The UI never renders HTML
   from the API.
-- **Security headers** (`next.config.mjs`):
-  - A Content-Security-Policy that allows connections only to the configured
-    API origin (`default-src 'self'`, `object-src 'none'`,
-    `frame-ancestors 'none'`).
-  - `X-Frame-Options: DENY`, `nosniff`, a strict referrer policy and a
-    restrictive permissions policy.
-  - **Known limit:** Next.js inlines its bootstrap scripts, so `script-src`
-    allows `'unsafe-inline'`. Nonce-based CSP would remove that.
+- **Content-Security-Policy with a per-request nonce** (`src/proxy.ts`):
+  - `script-src 'self' 'nonce-…' 'strict-dynamic'`. There is no
+    `'unsafe-inline'`: Next.js puts the nonce on its own scripts, so a script
+    injected into a page does not run.
+  - Styles are also nonce-bound. Connections are limited to the API origin.
+  - `object-src 'none'`, `base-uri 'self'`, `form-action 'self'` and
+    `frame-ancestors 'none'`.
+  - A fresh nonce means pages render per request instead of statically.
+- **Other headers** (`next.config.mjs`): `X-Frame-Options: DENY`, `nosniff`, a
+  strict referrer policy and a restrictive permissions policy.
+- **Verified in a browser:** an inline `<script>` injected into the server's
+  HTML runs without the policy and is blocked, with a CSP violation, with it.
 
 ## Testing
 

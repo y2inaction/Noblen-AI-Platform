@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -7,11 +8,13 @@ export const metadata: Metadata = {
     "Modular, multi-tenant AI business-automation platform by Noblen AI Solutions.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // Render per request so each response carries a fresh CSP nonce (src/proxy.ts).
+  await connection();
   return (
     <html lang="en">
       <body>{children}</body>
