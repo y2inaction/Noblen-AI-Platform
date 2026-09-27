@@ -75,8 +75,12 @@ The same restricted document (readable by A only, canary inside) is used in ever
 Same matrix as section 4, with A's USER memory as the canary. Paths:
 - `recall_memories`;
 - `PERSISTENT` injection;
+- the run's conversation (tool messages) *(exists: `test_conversation_privacy.py`)*;
 - workflow agent step → output;
-- run detail;
+- run detail and run list (escalation reason, failed-tool errors);
+- `GET /operations/overview`;
+- notification bodies;
+- the approval-decision response;
 - `save_agent_memory` publication (approval required *(exists)*, provenance recorded).
 
 ## 6. Workflow isolation

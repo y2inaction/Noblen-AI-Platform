@@ -49,6 +49,22 @@ The same pattern appears, with lower severity, in other places:
 | 4 | `GET /runs/{id}`, `GET /runs`, `GET /operations/overview`, and the `run_escalated` notification body | `escalation_reason` (model-written free text); `steps[].error` for tool errors | `run:view` (VIEWER) / `operations:view` / approvers | Low–Medium |
 | 5 | Tasks created by agents or workflow tool steps | `title` / `description` derived from private context, published to `task:view` | Organization | By design (publication), but no provenance |
 | 6 | `GET /approvals*` | `request_payload` (tool arguments, e.g. an email body) | `agent:approve_actions` | Accepted (approver needs it); add provenance warning |
+| 7 | `POST /approvals/{id}/approve\|modify\|reject` | `execution.message` and `execution.escalation_reason`: the resumed run's answer, returned to the approver | `agent:approve_actions` | Medium |
+
+Records audited for this path:
+- Workflow APIs (`/workflows*`): definitions only; no run content.
+- Workflow-run and step-run APIs (`/workflow-runs*`): rows 1 and 2 above.
+- Agent-run APIs (`/runs*`, `/operations/overview`): row 4.
+- Tasks (`/tasks*`): row 5.
+- Approvals (`/approvals*`), including the response to a decision. That response
+  returns the resumed run's result, including the agent's next answer, to the approver.
+- Conversations: already participant-only.
+- Knowledge and memory APIs: already enforced in SQL.
+- Notifications: recipient-only, but some bodies carry run content (rows 3 and 4).
+- Audit log: no read API. Its metadata holds names and ids only.
+- Tool executions: there is no `ToolExecution` table. Each execution is split across a
+  trace step, a tool message in the conversation, an audit entry and an optional
+  approval, and each part is covered above.
 
 Already safe: run traces (argument *keys* only), conversations (participants only,
 3d9571f), memories (USER scope private), knowledge (ACL predicates in SQL), and

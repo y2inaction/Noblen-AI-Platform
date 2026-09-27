@@ -33,6 +33,7 @@ RLS makes PostgreSQL enforce the same rule a second time.
 | Recovery (`recover_agent_runs`, `recover_workflow_runs`) and memory `purge_expired` | Same | No | Yes |
 | Run execution (`runtime.process_queued`, `WorkflowEngine.advance`) | New session per run | Yes (run row). It **commits many times** per run (per step, per tool). | No |
 | Alembic migrations | Owner connection | n/a | Yes (DDL and backfills) |
+| Administrative operations (org settings, member roles, knowledge grants) | `get_db` | Yes (tenant-scoped endpoints) | No. No cross-tenant admin API exists, and platform superusers still need membership. |
 | Tests | SQLite by default; PostgreSQL job in CI | n/a | Fixtures create many orgs |
 
 Deployment fact: docker-compose connects the app as `POSTGRES_USER`. That role is the

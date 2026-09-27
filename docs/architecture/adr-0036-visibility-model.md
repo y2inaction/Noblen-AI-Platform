@@ -59,8 +59,35 @@ Rules that tie the levels together:
    content, if ever needed, is a separate, audited, break-glass path. None exists and
    none is proposed now.
 6. **SUPER_ADMIN role / `is_superuser`** keep today's behavior: permission wildcard
-   *within* orgs they are members of. They are subject to the same P/O/X rules. The
-   wildcard is a permission, and permissions never widen rows (rule 1).
+   *within* orgs they are members of. They are subject to the P and O rules, because
+   the wildcard is a permission and permissions never widen rows (rule 1). For X they
+   inherit `knowledge:read_all` (`resolve_principal` grants it), the one documented
+   row-widening permission. There is no cross-tenant platform-admin API. If one is ever
+   needed, it is level S, audited and separate.
+
+## Every resource, classified
+
+These are the levels as they should be. **Bold** marks where the code differs today
+(fixed by ADR-0035 unless noted).
+
+| Resource | Metadata level | Content level | Notes |
+|---|---|---|---|
+| Conversations and messages | P | P | Creator and participants (3d9571f). Tool results are stored here as `role="tool"` messages. |
+| Memories | T for AGENT/ORG; O for USER | same | USER scope is owner-only, admins included. AGENT/ORG writes need `memory:manage` or approval. |
+| Knowledge bases, documents, chunks, tables | T or X | T or X | ORGANIZATION visibility is T. RESTRICTED is X (grants to USER or ROLE), and the creator is O. `knowledge:read_all` (ADMIN, and platform superusers through `resolve_principal`) is the one documented row-widening permission. |
+| Agents, agent versions, tool bindings | T (`agent:view`) | T | Definitions are organization-shared by design. System instructions are visible to `agent:view`. |
+| Workflows, workflow versions | T (`workflow:view`) | T | Definitions only. Runs are separate. |
+| Agent runs (`agent_runs`, `agent_run_steps`) | T (`run:view`) | **P** | Content is `escalation_reason` and failed-tool error text. Step `detail` holds argument *keys* only, never values. |
+| Workflow runs and step runs | T (`workflow:view`) | **P**; approval requests: R (`agent:approve_actions`) | Content is `input`, `context`, step `output`, and free-text `error` and `decision_note`. `trigger_detail` is metadata (`{"test"}`, `{"webhook": true}`, `{"event"}`, `{"scheduled_for"}`). |
+| Tool executions | via their run | via their run | There is no separate `ToolExecution` table. An execution is a trace step (metadata), a tool message in the run's conversation (P), an audit entry (R) and, when gated, an approval (R). |
+| Approvals | R (`agent:approve_actions`) | R | `request_payload` is what the approver decides, so it must be visible to them. The resumed run's answer is not shown to the approver: **P**. |
+| Tasks | T (`task:view`) | T | A task is a publication. When an agent or workflow creates one from private context, the acting person published it. Provenance comes with ADR-0037. |
+| Notifications | O (recipient) | O | Bodies carrying run content go only to the run's person: **P**. |
+| Integration connections | T (`integration:view`) | T for `config`; **never** for secrets | Secrets are encrypted at rest and returned only as masked "is set" markers. No level can read them through the API. |
+| Imported MCP tools | T (`tool:view`) | T | Organization-owned catalogue rows (ADR-0032). |
+| Audit log | R (`audit:view`, ADMIN) | R | There is no read API yet. Entries hold actions, ids, tool names and denial reasons, never arguments or outputs. Keep it that way. |
+| Usage and cost | R (`ai:view_usage`, `operations:view`) | — | Aggregates only. |
+| Operations overview | R (`operations:view`) | P for escalation reasons | Reasons are shown only to each run's person. |
 
 ## Mapping existing code onto the model (no renames required)
 
