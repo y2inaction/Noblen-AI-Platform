@@ -46,6 +46,13 @@ exposes both (`GET /api/v1/tools`).
 | `save_agent_memory` (M4) | MEDIUM | `memory:write` | APPROVAL_REQUIRED |
 | `recall_memories` (M4) | LOW | `memory:view` | AUTO |
 | `forget_user_memory` (M4) | MEDIUM | `memory:write` | AUTO |
+| `send_email` (M6) | HIGH | `integration:use` | APPROVAL_REQUIRED (always) |
+| `call_webhook` (M6) | HIGH | `integration:use` | APPROVAL_REQUIRED (always) |
+| `create_calendar_event` (M6) | MEDIUM | `integration:use` | APPROVAL_REQUIRED |
+| `list_calendar_events` (M6) | LOW | `integration:use` | AUTO |
+| `upsert_crm_contact`, `add_crm_note` (M6) | MEDIUM | `integration:use` | APPROVAL_REQUIRED |
+| `find_crm_contacts` (M6) | LOW | `integration:use` | AUTO |
+| imported MCP tools (M6) | declared per tool by an admin | `integration:use` | APPROVAL_REQUIRED until changed |
 
 The work tools (M2) act only through `context.workspace`, an `AgentWorkspace`
 that the runtime binds to the run's organization, agent, run and initiator.
@@ -75,7 +82,8 @@ Calling it ends the run `ESCALATED` with the given reason.
 
 ## MCP compatibility
 
-Tool specs are `{name, description, input_schema}`, the same shape as an MCP tool
-listing. A planned `McpToolHandler` adapter can wrap tools from a connected MCP
-server as handlers (with Noblen-assigned risk level and permission) without
-changing the runtime. *Not implemented yet.*
+Since M6, remote MCP servers (Streamable HTTP) are connected as integrations. Their
+tools are imported as organization-owned catalogue tools, disabled and HIGH risk
+until an administrator enables them and declares their risk. From then on they run
+through the same bindings, permission ceiling, approvals, traces and audit as
+built-in tools. See [integrations.md](integrations.md#mcp-adapter).

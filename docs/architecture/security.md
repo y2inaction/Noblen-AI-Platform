@@ -36,15 +36,16 @@ The hierarchy is `VIEWER ⊂ MEMBER ⊂ OPERATOR ⊂ MANAGER ⊂ ADMIN`. This is
 - **Retrieved content is untrusted data** and cannot change instructions or
   permissions (Phase 4).
 
-## Audit events added in 3.0 (M1–M5)
+## Audit events added in 3.0 (M1–M6)
 
 `agent.run_started`, `agent.run_completed`, `agent.run_escalated`,
 `agent.run_failed`, `agent.run_queued` (M2), `agent.created_from_template` (M2),
 `task.created` / `task.updated` (M2), `agent.tool_denied`, `agent.tool_executed` (MEDIUM/HIGH or
 approved), `agent.approval_requested`, `agent.approval_decided`, `knowledge.access_changed` (M3),
 `memory.created` / `memory.updated` / `memory.deleted` / `memory.user_forgotten` (M4,
-scope and subject only, never content), and the `workflow.*` events (M5; see
-[workflows.md](workflows.md#execution-and-controls)).
+scope and subject only, never content), the `workflow.*` events (M5; see
+[workflows.md](workflows.md#execution-and-controls)), and the `integration.*` events
+(M6; see [integrations.md](integrations.md#audit)).
 
 ## Knowledge access control (M3)
 
@@ -70,6 +71,16 @@ re-checked before every step, so removing a role or membership stops their
 automations. Workflow approvals honour `require_independent_approval`, and
 HIGH-risk tools in workflows always wait for approval. See [workflows.md](workflows.md).
 
+## Integration credentials (M6)
+
+Connection secrets are encrypted at rest (Fernet, rotating keys; a key is required
+in production), write-only through the API, and never reach agents, tools, models,
+logs or the audit trail. Outbound calls pass an SSRF guard (public addresses only,
+https, no redirects, size and time limits). Imported MCP tools are
+organization-scoped and start disabled and HIGH risk. Inbound workflow webhooks use
+hashed, rotating tokens and answer 404 to every failure. See
+[integrations.md](integrations.md).
+
 ## Separation of duties (M2)
 
 `organizations.require_independent_approval` stops initiators from deciding
@@ -82,4 +93,4 @@ default and toggled by org admins (`org:manage`).
 - Knowledge grants are per resource; there are no group or team principals yet.
 - There is no per-organization budget cap on model spend yet.
 - PostgreSQL row-level security is planned as defence in depth.
-- Per-organization integration credentials (`CredentialReference`) arrive with integrations.
+- The SSRF guard resolves hostnames at check time, so DNS rebinding could race it (M6).

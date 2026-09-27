@@ -98,6 +98,8 @@ answers the remaining calls of the paused turn, and continues the loop.
    triggers; agent, tool, condition and approval steps; retries with backoff and
    failure policies; run-as authority re-checked per step; DB-queued execution on
    the existing worker.
-6. **M6: Integrations.** An MCP adapter, credential references, and email,
-   calendar and CRM tools with declared risk levels.
+6. **M6: Integrations** ✅ Encrypted connections (credential references) with an
+   SSRF guard; SMTP email, outbound webhooks, CalDAV calendar and HubSpot CRM tools
+   with declared risk levels; a remote MCP adapter whose imported tools are
+   organization-scoped and admin-governed; inbound webhook triggers for workflows.
 7. **M7: Operating-environment UI.** Dashboard, workforce, approvals inbox, run traces.

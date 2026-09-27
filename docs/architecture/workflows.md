@@ -56,6 +56,8 @@ The engine reuses the platform instead of duplicating it:
   a late worker runs once, then moves to the next slot.
 - `event`: `task.created` or `task.completed`. The task's id, title, status,
   priority and assignee become the run's `input`.
+- `webhook` (M6): external systems POST JSON to `/api/v1/hooks/workflows/{id}` with
+  the token shown at activation. See [integrations.md](integrations.md#inbound-webhooks-workflow-trigger).
 
 **Steps**
 - Common fields: `id` (lowercase slug), `next` (a step id or `"end"`; the default
@@ -64,8 +66,9 @@ The engine reuses the platform instead of duplicating it:
 - `agent`: `agent_id` and `input`. Output `{text, agent_run_id}`.
 - `tool`: `tool`, `arguments` and `require_approval`. Only tools marked
   `available_in_workflows` can be used: time, organization settings, the task tools
-  and `notify_member`. Tools that need an agent's scope (knowledge, data tables,
-  memory) are used through an agent step instead.
+  and `notify_member`, plus (M6) `send_email`, `call_webhook`, the calendar tools and
+  the CRM tools. Tools that need an agent's scope (knowledge, data tables, memory)
+  and imported MCP tools are used through an agent step instead.
 - `condition`: `left`, `op` (`eq ne gt gte lt lte contains exists empty`), `right`,
   `then` and `else`.
 - `approval`: `title`, `details` and `on_reject` (without it, a rejection cancels the run).
@@ -131,7 +134,7 @@ organization.
 
 ## Not yet
 
-- Webhook and form triggers, and HTTP/email steps. These arrive with integrations
-  (M6), with credential references.
+- Form triggers, and MCP tools as workflow steps. Webhook triggers and the email,
+  webhook, calendar and CRM tools arrived in M6 (see [integrations.md](integrations.md)).
 - Parallel branches, sub-workflows and a visual builder.
 - Cron expressions. Schedules are `every_minutes` or `daily_at` for now.

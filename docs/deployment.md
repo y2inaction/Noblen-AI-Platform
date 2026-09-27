@@ -45,6 +45,14 @@ redirects 80 → 443. Automate issuance/renewal with Certbot/Let's Encrypt.
 Restore instructions are printed by the script. Schedule via cron and store backups
 off-box. Configurable data-retention policies are planned (spec §43).
 
+## Integration secrets (M6)
+Set `INTEGRATIONS_ENCRYPTION_KEYS` in production: one or more Fernet keys, newest
+first. Generate one with
+`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
+To rotate, put the new key first and keep the old ones until every connection has
+been re-saved. Without a key, creating or using connections fails in production.
+Keep `INTEGRATIONS_ALLOW_PRIVATE_NETWORKS=false` outside local development.
+
 ## Production compose
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build

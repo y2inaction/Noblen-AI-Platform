@@ -328,3 +328,29 @@ before each step.
 authorization instead of re-implementing them, and need no new infrastructure.
 There are no parallel branches, sub-workflows or cron expressions yet. Schedules are
 polled, so their precision is the worker's poll interval.
+
+### ADR-0031 — Integrations are credential references behind a run-bound gateway
+**Status:** Accepted (3.0 M6)
+**Decision:** External services are per-organization connections whose secrets are
+encrypted at rest (Fernet with rotating keys, required in production) and are
+write-only. Tools never receive credentials: they name a connection, and an
+`IntegrationGateway` bound to the run decrypts the secret only for the call and
+audits external writes. Each provider speaks its real protocol (SMTP, HTTPS
+webhooks, CalDAV, the HubSpot REST API, MCP over Streamable HTTP) behind one SSRF
+guard. Tool risk levels are declared in code; outward-facing actions (email,
+webhooks) are HIGH and always need approval.
+**Consequences:** Adding a provider is a config/secret schema, a client and a few
+tools. OAuth providers (Google, Microsoft) need a token-refresh flow on top of this
+model and are not included. Hostname checks are exposed to DNS-rebinding races.
+
+### ADR-0032 — Imported MCP tools are tenant-owned and admin-governed
+**Status:** Accepted (3.0 M6)
+**Decision:** Tools discovered on a remote MCP server become organization-owned
+catalogue rows (`tools.organization_id`), invisible to other tenants. They start
+disabled, HIGH risk and approval-required. An administrator enables each one and
+declares its risk and policy, because a remote server's own description of its
+tools cannot be trusted. Execution reuses the agent runtime's binding, permission
+ceiling, approval and trace. Results are returned as untrusted data.
+**Consequences:** Any MCP server can extend an organization's agents without code,
+under the same controls as built-in tools. Tools removed remotely are disabled on
+the next sync. MCP tools are not yet available as workflow steps.

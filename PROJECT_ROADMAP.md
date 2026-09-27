@@ -42,7 +42,12 @@ Phases 10–11 (hardening, deployment) still apply.
   code); retries with backoff; `fail`/`continue`/`escalate`; run-as authority
   re-checked per step; kill switch, step budget and event-depth guard; executed by
   the existing DB-queue worker.
-- ⬜ **M6: Integrations.** MCP adapter, credential references, email/calendar/CRM.
+- ✅ **M6: Integrations.** Encrypted, per-organization connections (Fernet, key
+  rotation, write-only secrets) and an SSRF guard; `send_email` (SMTP),
+  `call_webhook` (signed), CalDAV calendar and HubSpot CRM tools with declared risk
+  levels; remote MCP adapter (Streamable HTTP) importing organization-owned tools
+  that admins enable and risk-rate; webhook triggers for workflows. *Not yet:*
+  OAuth connections (Google/Microsoft), messaging channels, Paystack.
 - ⬜ **M7: Operating-environment UI.** Dashboard, workforce, approvals inbox, runs.
 
 ---

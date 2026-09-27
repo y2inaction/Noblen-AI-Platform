@@ -141,6 +141,24 @@ Retention is set with `PATCH /organizations/current` `{"memory_retention_days": 
 Runs execute on the worker (`python -m app.agents.worker`). See
 [`architecture/workflows.md`](architecture/workflows.md) for the definition format.
 
+### Integrations — `/api/v1/integrations` (Noblen AI 3.0, M6)
+| Method | Path | Permission |
+|---|---|---|
+| GET | `/integrations` · `/integrations/{id}` | `integration:view` (secrets are never returned, only masked hints) |
+| POST | `/integrations` (`{provider, name, config, secret}`) | `integration:manage` |
+| PATCH/DELETE | `/integrations/{id}` (secret keys merge; `null` removes a key) | `integration:manage` |
+| POST | `/integrations/{id}/test` → `{ok, error}` | `integration:manage` |
+| GET | `/integrations/{id}/tools` (MCP) | `integration:view` |
+| POST | `/integrations/{id}/tools/sync` (MCP) | `integration:manage` |
+| PATCH | `/integrations/{id}/tools/{tool_id}` (`{enabled, risk_level, permission_mode}`) | `integration:manage` |
+
+### Inbound webhooks — `/api/v1/hooks` (Noblen AI 3.0, M6)
+`POST /hooks/workflows/{workflow_id}` with header `X-Noblen-Webhook-Token: <token>` and
+a JSON object body returns **202** `{run_id, status}`. There is no user session. The
+token is shown once by `POST /workflows/{id}/activate` for webhook-triggered workflows
+(`webhook_token`, `webhook_path`). Every failure is a 404. See
+[`architecture/integrations.md`](architecture/integrations.md).
+
 ### Runs & AI Operations — `/api/v1` (Noblen AI 3.0, M1)
 | Method | Path | Permission |
 |--------|------|------------|

@@ -6,6 +6,31 @@ and the project uses Conventional Commits.
 
 ## [Unreleased]
 
+### Added — Noblen AI 3.0, Milestone 6 (Integrations)
+- **Connections (credential references):** `integration_connections` for SMTP,
+  WEBHOOK, CALDAV, HUBSPOT and MCP, with the `/integrations` API (`integration:manage`,
+  ADMIN). Secrets are Fernet-encrypted with rotating keys, write-only, shown only as
+  masked hints, and never given to agents, tools, models, logs or the audit trail.
+  A connection test endpoint is included.
+- **Outbound safety:** SSRF guard (public addresses only), https, no redirects,
+  timeouts and size limits for every HTTP and SMTP connection.
+- **Tools with declared risk:** `send_email` and `call_webhook` (HIGH, always
+  approved); `create_calendar_event`, `upsert_crm_contact` and `add_crm_note`
+  (MEDIUM, approval by default); `list_calendar_events` and `find_crm_contacts`
+  (LOW). All need `integration:use` and are also available as workflow steps.
+  Webhooks are HMAC-signed.
+- **MCP adapter:** remote MCP servers (Streamable HTTP, JSON or SSE). Their tools
+  are imported as organization-owned catalogue tools that start disabled and HIGH
+  risk until an admin enables them and declares their risk. They run with the usual
+  bindings, ceiling, approvals and audit.
+- **Workflow webhook trigger:** `POST /hooks/workflows/{id}` with a hashed, rotating
+  token shown once at activation.
+- **Templates:** Executive AI v3 binds calendar and email; Customer AI v2 binds CRM
+  writes (not search).
+- `tools.organization_id` (organization-owned tools). Migration `08100b04d46f`;
+  `INTEGRATIONS_*`, `HUBSPOT_API_BASE` and `WEBHOOK_MAX_BODY_BYTES` settings;
+  `httpx` and `cryptography` runtime dependencies.
+
 ### Added — Noblen AI 3.0, Milestone 5 (Workflow engine)
 - **Workflows:** `workflows` with immutable, numbered `workflow_versions`, lifecycle
   `DRAFT → ACTIVE ⇄ PAUSED → ARCHIVED`, and the `/workflows` API.
