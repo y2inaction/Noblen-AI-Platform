@@ -13,6 +13,9 @@ or a membership stops their automations.
 from __future__ import annotations
 
 import contextvars
+import hashlib
+import hmac
+import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -52,6 +55,7 @@ _TRIGGER = {
     "manual": WorkflowTriggerType.MANUAL.value,
     "schedule": WorkflowTriggerType.SCHEDULE.value,
     "event": WorkflowTriggerType.EVENT.value,
+    "webhook": WorkflowTriggerType.WEBHOOK.value,
 }
 
 # Set by the engine while a run executes, so events it causes carry its depth.
@@ -288,8 +292,11 @@ async def activate(
     workflow_id: uuid.UUID,
     user_id: uuid.UUID,
     version_id: uuid.UUID | None = None,
-) -> Workflow:
-    """Make a version live. Triggered runs will act under the activating user."""
+) -> tuple[Workflow, str | None]:
+    """Make a version live. Triggered runs will act under the activating user.
+
+    For webhook triggers, returns a new secret token (shown once; only its hash
+    is stored). Every activation rotates it."""
     workflow = await get_workflow(db, organization_id, workflow_id)
     if workflow.status == WorkflowStatus.ARCHIVED.value:
         raise ConflictError("Archived workflows cannot be activated.")
@@ -306,8 +313,48 @@ async def activate(
     workflow.trigger_type = _TRIGGER[definition.trigger.type]
     workflow.event_name = definition.trigger.event
     workflow.next_run_at = next_fire(definition, _now(), await _org_timezone(db, organization_id))
+    token: str | None = None
+    if definition.trigger.type == "webhook":
+        token = secrets.token_urlsafe(32)
+        workflow.webhook_token_hash = hash_token(token)
+    else:
+        workflow.webhook_token_hash = None
     await db.flush()
-    return workflow
+    return workflow, token
+
+
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+async def trigger_webhook(
+    db: AsyncSession, workflow_id: uuid.UUID, token: str | None, payload: dict[str, Any]
+) -> WorkflowRun:
+    """Queue a run for an inbound webhook. Any mismatch is a 404, so callers
+    cannot probe which workflows exist."""
+    workflow = await db.get(Workflow, workflow_id)
+    if (
+        workflow is None
+        or not token
+        or workflow.status != WorkflowStatus.ACTIVE.value
+        or workflow.trigger_type != WorkflowTriggerType.WEBHOOK.value
+        or workflow.webhook_token_hash is None
+        or workflow.active_version_id is None
+        or not hmac.compare_digest(workflow.webhook_token_hash, hash_token(token))
+    ):
+        raise NotFoundError("Not found.")
+    version = await get_version(
+        db, workflow.organization_id, workflow.id, workflow.active_version_id
+    )
+    return await queue_run(
+        db,
+        workflow,
+        version,
+        trigger_type=WorkflowTriggerType.WEBHOOK.value,
+        initiated_by=workflow.run_as_user_id,
+        input=payload,
+        trigger_detail={"webhook": True},
+    )
 
 
 async def pause(db: AsyncSession, organization_id: uuid.UUID, workflow_id: uuid.UUID) -> Workflow:

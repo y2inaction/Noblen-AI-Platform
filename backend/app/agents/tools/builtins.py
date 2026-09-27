@@ -174,6 +174,7 @@ class QueryDataTableTool(ToolHandler):
 def _all_builtin_tools() -> list[ToolHandler]:
     from app.agents.tools.memory_tools import MEMORY_TOOLS
     from app.agents.tools.work_tools import WORK_TOOLS
+    from app.integrations.tools import INTEGRATION_TOOLS
 
     return [
         GetCurrentTimeTool(),
@@ -184,6 +185,7 @@ def _all_builtin_tools() -> list[ToolHandler]:
         QueryDataTableTool(),
         *WORK_TOOLS,
         *MEMORY_TOOLS,
+        *INTEGRATION_TOOLS,
     ]
 
 

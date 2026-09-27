@@ -108,6 +108,19 @@ class Settings(BaseSettings):
     WORKFLOW_MAX_EVENT_DEPTH: int = 3  # workflow → event → workflow chains
     WORKFLOW_MIN_INTERVAL_MINUTES: int = 5  # shortest schedule
 
+    # ---- Integrations (Noblen AI 3.0, M6) ----
+    # Fernet keys (comma-separated, newest first) that encrypt integration secrets.
+    # Required in production. Outside production a key is derived from JWT_SECRET.
+    INTEGRATIONS_ENCRYPTION_KEYS: list[str] = Field(default_factory=list)
+    INTEGRATIONS_HTTP_TIMEOUT_SECONDS: float = 15.0
+    INTEGRATIONS_MAX_RESPONSE_BYTES: int = 1_000_000
+    # Outbound connections to private/loopback/link-local addresses are blocked
+    # (SSRF defence) unless this is on — for local development only.
+    INTEGRATIONS_ALLOW_PRIVATE_NETWORKS: bool = False
+    HUBSPOT_API_BASE: str = "https://api.hubapi.com"
+    # Inbound webhook bodies (workflow webhook triggers).
+    WEBHOOK_MAX_BODY_BYTES: int = 65_536
+
     # ---- Knowledge + RAG (Phase 4) ----
     # Embedding model config. The vector column dimension is fixed platform-wide
     # (KNOWLEDGE_EMBEDDING_DIMENSION) and must match the configured model.
@@ -140,7 +153,9 @@ class Settings(BaseSettings):
     DEFAULT_TIMEZONE: str = "Africa/Lagos"
     DEFAULT_LOCALE: str = "en"
 
-    @field_validator("BACKEND_CORS_ORIGINS", "AI_FALLBACK_MODELS", mode="before")
+    @field_validator(
+        "BACKEND_CORS_ORIGINS", "AI_FALLBACK_MODELS", "INTEGRATIONS_ENCRYPTION_KEYS", mode="before"
+    )
     @classmethod
     def _split_cors(cls, value: object) -> object:
         if isinstance(value, str):

@@ -46,6 +46,8 @@ from app.ai.gateway import AIGateway, get_ai_gateway
 from app.ai.types import GenerationRequest, GenerationResponse, Message, ToolCall, ToolSpec
 from app.core.config import settings
 from app.core.logging import bind_context, get_logger
+from app.integrations.service import MCP_HANDLER, IntegrationGateway, mcp_tool_row
+from app.integrations.tools import McpToolHandler
 from app.knowledge.agent_tables import AgentKnowledgeTables
 from app.models.agent import Agent, AgentVersion
 from app.models.approval import Approval
@@ -258,7 +260,11 @@ class AgentRuntime:
         for agent_tool, tool in rows:
             if not tool.enabled:
                 continue
+            if tool.organization_id is not None and tool.organization_id != organization_id:
+                continue  # another tenant's tool can never run here
             handler = self._tools.get_by_identifier(tool.handler_identifier)
+            if handler is None and tool.handler_identifier == MCP_HANDLER:
+                handler = await self._mcp_handler(db, tool)
             if handler is None:
                 continue  # only registered handlers may ever run
             configured = agent_tool.permission_mode or tool.permission_mode
@@ -280,6 +286,14 @@ class AgentRuntime:
             )
         specs.append(ESCALATE_TOOL)
         return bindings, specs
+
+    @staticmethod
+    async def _mcp_handler(db: AsyncSession, tool: Tool) -> McpToolHandler | None:
+        """Imported MCP tools run with the risk level an administrator declared."""
+        row = await mcp_tool_row(db, tool)
+        if row is None or not row.available:
+            return None
+        return McpToolHandler(row.id, tool.name, row.risk_level)
 
     async def _build_state(
         self, db: AsyncSession, run: AgentRun, agent: Agent, version: AgentVersion
@@ -312,6 +326,13 @@ class AgentRuntime:
                 agent_id=agent.id,
                 run_id=run.id,
                 user_id=run.initiated_by,
+            ),
+            integrations=IntegrationGateway(
+                db=db,
+                organization_id=run.organization_id,
+                user_id=run.initiated_by,
+                agent_id=agent.id,
+                run_id=run.id,
             ),
         )
         bindings, specs = await self._load_tools(db, run.organization_id, agent.id)

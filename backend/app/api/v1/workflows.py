@@ -177,7 +177,7 @@ async def activate_workflow(
     ctx: TenantContext = Depends(require_permission(Permission.WORKFLOW_MANAGE)),
     db: AsyncSession = Depends(get_db),
 ) -> WorkflowOut:
-    workflow = await service.activate(
+    workflow, token = await service.activate(
         db, ctx.organization_id, workflow_id, ctx.user.id, body.version_id if body else None
     )
     await _audit(
@@ -190,7 +190,12 @@ async def activate_workflow(
     )
     await db.commit()
     await db.refresh(workflow)
-    return WorkflowOut.model_validate(workflow)
+    out = WorkflowOut.model_validate(workflow)
+    if token:
+        # Shown once. Callers send it as the X-Noblen-Webhook-Token header.
+        out.webhook_token = token
+        out.webhook_path = f"/api/v1/hooks/workflows/{workflow.id}"
+    return out
 
 
 @router.post("/workflows/{workflow_id}/pause", response_model=WorkflowOut)

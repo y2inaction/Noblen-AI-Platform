@@ -22,6 +22,8 @@ class ToolOut(BaseModel):
     permission_mode: str
     enabled: bool
     handler_identifier: str
+    # Set for organization-owned tools (e.g. imported from an MCP server).
+    organization_id: uuid.UUID | None = None
     created_at: datetime
     # Declared in code by the tool handler (not editable through the catalogue).
     risk_level: str | None = None

@@ -34,6 +34,9 @@ class ToolContext:
     knowledge_tables: Any = None
     # Run-bound long-term memory (`app.services.memory_service.AgentMemory`, M4).
     memory: Any = None
+    # Run-bound access to the organization's integrations
+    # (`app.integrations.service.IntegrationGateway`, M6). Never exposes secrets.
+    integrations: Any = None
 
 
 @dataclass

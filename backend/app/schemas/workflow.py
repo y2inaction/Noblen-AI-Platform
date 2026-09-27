@@ -67,6 +67,9 @@ class WorkflowOut(BaseModel):
     created_by: uuid.UUID | None
     created_at: datetime
     updated_at: datetime
+    # Webhook triggers: returned only by the activation that created the token.
+    webhook_token: str | None = None
+    webhook_path: str | None = None
 
 
 class WorkflowListOut(BaseModel):

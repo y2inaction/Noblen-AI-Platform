@@ -194,6 +194,7 @@ class WorkflowTriggerType(str, enum.Enum):
     MANUAL = "MANUAL"
     SCHEDULE = "SCHEDULE"
     EVENT = "EVENT"
+    WEBHOOK = "WEBHOOK"  # M6: an external system POSTs to the workflow's hook URL
 
 
 class WorkflowRunStatus(str, enum.Enum):
@@ -212,3 +213,17 @@ class WorkflowStepStatus(str, enum.Enum):
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
     REJECTED = "REJECTED"
+
+
+# ---- Integrations (Noblen AI 3.0, M6) ----
+class IntegrationProvider(str, enum.Enum):
+    SMTP = "SMTP"  # outbound email
+    WEBHOOK = "WEBHOOK"  # outbound HTTPS webhook
+    MCP = "MCP"  # remote MCP server (Streamable HTTP)
+    CALDAV = "CALDAV"  # calendar (Google, iCloud, Fastmail, Nextcloud, ...)
+    HUBSPOT = "HUBSPOT"  # CRM
+
+
+class IntegrationStatus(str, enum.Enum):
+    ACTIVE = "ACTIVE"
+    DISABLED = "DISABLED"

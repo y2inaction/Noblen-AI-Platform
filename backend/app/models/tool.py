@@ -1,9 +1,10 @@
 """Tool registry models.
 
 `Tool` is the catalogue row (schema + default permission mode + handler id). Tools
-are platform-global templates (organization_id NULL) by default; an org may later
-own custom tools. `AgentTool` binds a tool to a specific agent with a per-agent
-permission-mode override.
+are platform-global (organization_id NULL) by default. Since M6 an organization
+can own tools too: those imported from its MCP servers, visible only to it.
+`AgentTool` binds a tool to a specific agent with a per-agent permission-mode
+override.
 """
 
 from __future__ import annotations
@@ -34,6 +35,10 @@ class Tool(UUIDMixin, TimestampMixin, Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     # Maps to a registered handler in the in-code tool registry.
     handler_identifier: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Owning organization for tenant-specific tools (M6, e.g. MCP); NULL = global.
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True
+    )
 
 
 class AgentTool(UUIDMixin, TimestampMixin, Base):

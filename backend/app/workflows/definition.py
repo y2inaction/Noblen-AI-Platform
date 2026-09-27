@@ -43,7 +43,7 @@ class _Model(BaseModel):
 
 
 class Trigger(_Model):
-    type: Literal["manual", "schedule", "event"] = "manual"
+    type: Literal["manual", "schedule", "event", "webhook"] = "manual"
     every_minutes: int | None = Field(default=None, le=10_080)
     daily_at: str | None = None  # "HH:MM" in the organization's timezone
     event: Literal["task.created", "task.completed"] | None = None

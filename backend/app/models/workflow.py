@@ -49,6 +49,8 @@ class Workflow(UUIDMixin, TimestampMixin, TenantMixin, Base):
     )
     # Whose authority scheduled and event-triggered runs act under: the person
     # who activated the workflow. Re-checked against their current role per step.
+    # Webhook triggers (M6): SHA-256 of the secret token callers must present.
+    webhook_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     run_as_user_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

@@ -78,6 +78,11 @@ class Permission:
     WORKFLOW_MANAGE = "workflow:manage"
     # M5: start a workflow manually (and be the authority a manual run acts under).
     WORKFLOW_RUN = "workflow:run"
+
+    # Integrations (M6): see connections; use them through tools; manage credentials.
+    INTEGRATION_VIEW = "integration:view"
+    INTEGRATION_USE = "integration:use"
+    INTEGRATION_MANAGE = "integration:manage"
     TASK_VIEW = "task:view"
     TASK_MANAGE = "task:manage"
     # Memory (M4): read memories; write your own; manage agent/organization memory.
@@ -117,6 +122,7 @@ _MEMBER_PERMISSIONS = _VIEW_PERMISSIONS + [
     Permission.KNOWLEDGE_SEARCH,
     Permission.MEMORY_WRITE,
     Permission.WORKFLOW_RUN,
+    Permission.INTEGRATION_USE,
 ]
 
 # OPERATOR (AI Operator): supervises deployed agents — decides approvals,
@@ -161,6 +167,7 @@ _ADMIN_PERMISSIONS = _MANAGER_PERMISSIONS + [
     Permission.SETTINGS_MANAGE,
     Permission.KNOWLEDGE_DELETE,
     Permission.KNOWLEDGE_READ_ALL,
+    Permission.INTEGRATION_MANAGE,
 ]
 
 # Default role -> permission-code mapping. SUPER_ADMIN gets the wildcard.

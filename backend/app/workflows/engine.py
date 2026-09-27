@@ -38,6 +38,7 @@ from app.ai.errors import AIError
 from app.core.config import settings
 from app.core.exceptions import AppError
 from app.core.logging import get_logger
+from app.integrations.service import IntegrationGateway
 from app.models.enums import (
     MembershipStatus,
     RunStatus,
@@ -346,6 +347,9 @@ class WorkflowEngine:
                 agent_id=None,
                 run_id=None,
                 user_id=run.initiated_by,
+            ),
+            integrations=IntegrationGateway(
+                db=db, organization_id=run.organization_id, user_id=run.initiated_by
             ),
         )
         try:

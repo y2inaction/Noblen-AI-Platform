@@ -19,6 +19,7 @@ from app.models.conversation import (
     ConversationMessage,
     ConversationParticipant,
 )
+from app.models.integration import IntegrationConnection, IntegrationTool
 from app.models.knowledge import (
     AgentKnowledgeSource,
     DocumentChunk,
@@ -80,4 +81,6 @@ __all__ = [
     "WorkflowVersion",
     "WorkflowRun",
     "WorkflowStepRun",
+    "IntegrationConnection",
+    "IntegrationTool",
 ]
