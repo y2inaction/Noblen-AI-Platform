@@ -141,6 +141,13 @@ Retention is set with `PATCH /organizations/current` `{"memory_retention_days": 
 Runs execute on the worker (`python -m app.agents.worker`). See
 [`architecture/workflows.md`](architecture/workflows.md) for the definition format.
 
+### Current access — `/api/v1/organizations/current/access` (Noblen AI 3.0, M7)
+`GET` returns `{organization_id, organization_name, role_name, is_platform_admin,
+permissions}` for the active organization (selected with `X-Organization-Id`). Any
+member may call it. Clients use it to show only what the caller may do; the server
+still checks every request. `GET /auth/me` memberships now include
+`organization_name`.
+
 ### Integrations — `/api/v1/integrations` (Noblen AI 3.0, M6)
 | Method | Path | Permission |
 |---|---|---|

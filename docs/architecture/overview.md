@@ -102,4 +102,8 @@ answers the remaining calls of the paused turn, and continues the loop.
    SSRF guard; SMTP email, outbound webhooks, CalDAV calendar and HubSpot CRM tools
    with declared risk levels; a remote MCP adapter whose imported tools are
    organization-scoped and admin-governed; inbound webhook triggers for workflows.
-7. **M7: Operating-environment UI.** Dashboard, workforce, approvals inbox, run traces.
+7. **M7: Operating-environment UI** ✅ An authenticated web UI over the public API:
+   dashboard, workforce, one approvals inbox for agents and workflows, agent and
+   workflow run traces, workflows, tasks, integrations and notifications. It is
+   permission-aware, with an organization switcher and strict security headers.
+   See [operating-environment.md](operating-environment.md).

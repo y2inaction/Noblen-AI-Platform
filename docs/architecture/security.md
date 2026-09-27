@@ -81,6 +81,14 @@ organization-scoped and start disabled and HIGH risk. Inbound workflow webhooks 
 hashed, rotating tokens and answer 404 to every failure. See
 [integrations.md](integrations.md).
 
+## Web UI (M7)
+
+Tokens are kept in `sessionStorage` (one tab) with refresh-once-then-sign-out, and
+sign-out revokes the refresh token. API data is rendered only as text. The UI ships
+a Content-Security-Policy limited to the API origin, plus frame, sniffing, referrer
+and permissions headers. Permission-based hiding is a convenience; the API enforces
+everything. See [operating-environment.md](operating-environment.md#session-and-security).
+
 ## Separation of duties (M2)
 
 `organizations.require_independent_approval` stops initiators from deciding
@@ -93,4 +101,5 @@ default and toggled by org admins (`org:manage`).
 - Knowledge grants are per resource; there are no group or team principals yet.
 - There is no per-organization budget cap on model spend yet.
 - PostgreSQL row-level security is planned as defence in depth.
+- The UI's CSP allows `'unsafe-inline'` scripts (Next.js bootstrap). Nonce-based CSP is planned.
 - The SSRF guard resolves hostnames at check time, so DNS rebinding could race it (M6).

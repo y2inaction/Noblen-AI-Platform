@@ -48,7 +48,13 @@ Phases 10–11 (hardening, deployment) still apply.
   levels; remote MCP adapter (Streamable HTTP) importing organization-owned tools
   that admins enable and risk-rate; webhook triggers for workflows. *Not yet:*
   OAuth connections (Google/Microsoft), messaging channels, Paystack.
-- ⬜ **M7: Operating-environment UI.** Dashboard, workforce, approvals inbox, runs.
+- ✅ **M7: Operating-environment UI.** Next.js UI over the API: dashboard (live
+  operations overview), workforce (agents, templates, run a task), approvals inbox
+  (agent actions: approve, reject, or edit arguments and approve; workflow
+  decisions), agent and workflow run traces, workflows (create from JSON,
+  activate/pause, run), tasks, integrations (test, MCP tool governance),
+  notifications, and an organization switcher. Permission-aware via
+  `GET /organizations/current/access`. Browser smoke test in `frontend/e2e/`.
 
 ---
 
@@ -131,8 +137,10 @@ Phases 10–11 (hardening, deployment) still apply.
 - [ ] Email, Google Calendar, WhatsApp, Paystack, webhooks, CRM (interfaces + mocks first)
 
 ## Phase 8 — Client Dashboard (→ 3.0 M7)
-- [ ] Agents, conversations, leads, content, workflows, knowledge, tasks, analytics,
-      integrations, billing, settings
+- [x] Dashboard, agents (workforce), runs, approvals, workflows, tasks, integrations,
+      notifications (3.0 M7)
+- [ ] Conversations, leads, content, knowledge, analytics, billing, settings,
+      agent/connection authoring forms
 
 ## Phase 9 — Admin ⬜
 - [ ] Organizations, users, usage, AI costs, agents, executions, subscriptions,

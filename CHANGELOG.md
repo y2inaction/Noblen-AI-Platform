@@ -6,6 +6,33 @@ and the project uses Conventional Commits.
 
 ## [Unreleased]
 
+### Added — Noblen AI 3.0, Milestone 7 (Operating-environment UI)
+- **Web UI** (Next.js, no new runtime dependencies) over the public API:
+  - dashboard with the live 7-day operations overview, recent runs, escalations
+    and my tasks;
+  - workforce: agents, pause and resume, templates, run a task;
+  - approvals inbox: agent actions (approve, reject, or edit arguments and
+    approve, with notes) plus workflow approval steps;
+  - agent run traces and workflow run pages, including cancel;
+  - workflows: create from JSON, activate and pause, run now, one-time webhook
+    token display;
+  - tasks;
+  - integrations: test connections, sync MCP tools, enable them and set their
+    risk level;
+  - notifications menu and organization switcher.
+- **Session:** tokens in `sessionStorage`, refresh once on 401, sign-out revokes
+  the refresh token, same-site redirects after sign-in. Sign-in page can create
+  an organization.
+- **Security headers:** CSP limited to the API origin, frame denial, `nosniff`,
+  referrer and permissions policies.
+- **API:** `GET /organizations/current/access` (caller's role and permissions);
+  `organization_name` in `/auth/me` memberships.
+- **Browser smoke test** `frontend/e2e/smoke.mjs`, a full walkthrough against a
+  running stack with the mock model.
+
+### Changed — Milestone 7
+- The Phase 1 placeholder dashboard is replaced by the live operating environment.
+
 ### Added — Noblen AI 3.0, Milestone 6 (Integrations)
 - **Connections (credential references):** `integration_connections` for SMTP,
   WEBHOOK, CALDAV, HUBSPOT and MCP, with the `/integrations` API (`integration:manage`,

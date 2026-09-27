@@ -45,6 +45,12 @@ redirects 80 → 443. Automate issuance/renewal with Certbot/Let's Encrypt.
 Restore instructions are printed by the script. Schedule via cron and store backups
 off-box. Configurable data-retention policies are planned (spec §43).
 
+## Frontend API URL (M7)
+`NEXT_PUBLIC_API_BASE_URL` is baked into the frontend image at build time: it goes
+into the browser bundle and into the Content-Security-Policy's `connect-src`. Set it
+before `docker compose build` (Compose passes it as a build argument), and rebuild
+the frontend image when it changes.
+
 ## Integration secrets (M6)
 Set `INTEGRATIONS_ENCRYPTION_KEYS` in production: one or more Fernet keys, newest
 first. Generate one with
