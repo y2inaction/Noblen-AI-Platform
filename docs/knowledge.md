@@ -26,6 +26,8 @@ User → Agent Runtime → model → search_knowledge tool → authorize (agent'
 | `document_chunks` | Cleaned, chunked text — the retrievable unit |
 | `document_embeddings` | `vector(1536)` (pgvector) + retrieval metadata; HNSW cosine index |
 | `agent_knowledge_sources` | Authorizes which KBs an agent may search (security boundary) |
+| `knowledge_access_grants` | User and role grants on restricted KBs and documents (M3) |
+| `knowledge_tables` / `knowledge_table_rows` | Typed tables extracted from CSV/XLSX, rows as JSON (M3) |
 
 `organization_id` and `knowledge_base_id` are denormalized onto chunks/embeddings so
 the tenant-scoped vector search is a single indexed table scan.
@@ -33,7 +35,8 @@ the tenant-scoped vector search is a single indexed table scan.
 ## Ingestion pipeline (`app/knowledge/ingestion.py`)
 
 `load → extract → clean → chunk → embed → store`. Supported types: **TXT, MD, PDF
-(pypdf), DOCX (python-docx)**; unsupported types yield a clear validation error and
+(pypdf), DOCX (python-docx), CSV and XLSX (openpyxl, read as data: cached formula
+values, no macros)**. CSV/XLSX sheets are also stored as typed tables (M3); unsupported types yield a clear validation error and
 uploads are never executed. Failures leave the document in an actionable `FAILED`
 state (never silently `READY`). Ingestion is idempotent by `(knowledge_base, checksum)`
 and re-ingestion atomically replaces old chunks/embeddings only after new embeddings
@@ -75,7 +78,11 @@ policy (prompt-injection defense).
 - **Agent authorization** — agents search only KBs in `agent_knowledge_sources`.
 - **File security** — server-generated storage keys; no path traversal; files are data.
 - **No secrets** — tools/documents never access application secrets.
-- **RBAC** — `knowledge:view/create/update/delete/ingest/search/manage_sources`.
+- **RBAC** — `knowledge:view/create/update/delete/ingest/search/manage_sources`, plus
+  `knowledge:manage_access` and `knowledge:read_all` (M3).
+- **Knowledge ACLs (M3)** — restricted bases and documents with user/role grants,
+  enforced inside every retrieval query. See
+  [`architecture/knowledge.md`](architecture/knowledge.md#access-control-m3).
 
 ## API (`/api/v1`)
 
@@ -87,6 +94,9 @@ policy (prompt-injection defense).
 | POST | `/documents/{id}/ingest` (reprocess) | `knowledge:ingest` |
 | POST | `/knowledge/search` | `knowledge:search` |
 | POST/GET/DELETE | `/agents/{id}/knowledge-bases[...]` | `knowledge:manage_sources` / `agent:view` |
+| GET/PUT | `/knowledge-bases/{id}/access`, `/documents/{id}/access` (M3) | `knowledge:manage_access` |
+| GET | `/knowledge/tables` (M3) | `knowledge:view` |
+| POST | `/knowledge/tables/{id}/query` (M3) | `knowledge:search` |
 
 Ingestion is synchronous in Phase 4 (document create returns `READY`/`FAILED`); the
 pipeline is modular so an async worker can drive the same stages later.
@@ -98,13 +108,16 @@ Knowledge/RAG tests run against **real PostgreSQL + pgvector** (CI service
 they skip so the SQLite suites are unaffected. Coverage: pipeline units
 (extraction/cleaning/chunking), KB CRUD, ingestion (ready/failed/idempotent/re-ingest),
 semantic search + citations, **tenant isolation**, RBAC, and end-to-end RAG through the
-agent runtime with agent-authorization enforcement.
+agent runtime with agent-authorization enforcement. M3 adds access-control tests on
+PostgreSQL (`tests/knowledge/test_access_control.py`) and tabular parsing and query
+tests on SQLite (`tests/test_tabular_knowledge.py`).
 
 ## Configuration
 
 `KNOWLEDGE_EMBEDDING_PROVIDER/MODEL/DIMENSION`, `MAX_DOCUMENT_SIZE_MB`,
 `MAX_DOCUMENT_TEXT_LENGTH`, `MAX_CHUNKS_PER_DOCUMENT`, `KNOWLEDGE_CHUNK_SIZE/OVERLAP`,
 `KNOWLEDGE_DEFAULT_TOP_K`/`MAX_TOP_K`/`DEFAULT_SIMILARITY_THRESHOLD`,
+`KNOWLEDGE_MAX_TABLE_ROWS`/`MAX_TABLE_COLUMNS`/`MAX_QUERY_ROWS`,
 `KNOWLEDGE_STORAGE_DIR`, `KNOWLEDGE_LOG_CONTENT` — see `.env.example`.
 
 ## Not in this phase

@@ -43,6 +43,15 @@ The hierarchy is `VIEWER ⊂ MEMBER ⊂ OPERATOR ⊂ MANAGER ⊂ ADMIN`. This is
 `task.created` / `task.updated` (M2), `agent.tool_denied`, `agent.tool_executed` (MEDIUM/HIGH or
 approved), `agent.approval_requested`, `agent.approval_decided`.
 
+## Knowledge access control (M3)
+
+Restricted knowledge bases and documents are readable only by their creator,
+explicit user or role grants, and admins (`knowledge:read_all`). The check is a
+SQL predicate inside every knowledge query (listing, fetch, semantic search and
+table query), applied before ranking and limits. Agents read as the user who
+started the run. Grants are changed with `knowledge:manage_access` and audited as
+`knowledge.access_changed`. See [knowledge.md](knowledge.md#access-control-m3).
+
 ## Separation of duties (M2)
 
 `organizations.require_independent_approval` stops initiators from deciding
@@ -52,6 +61,7 @@ default and toggled by org admins (`org:manage`).
 ## Known gaps
 
 - Separation of duties is organization-wide. It is not yet configurable per risk level or per tool.
+- Knowledge grants are per resource; there are no group or team principals yet.
 - There is no per-organization budget cap on model spend yet.
 - PostgreSQL row-level security is planned as defence in depth.
 - Per-organization integration credentials (`CredentialReference`) arrive with integrations.

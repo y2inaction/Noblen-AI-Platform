@@ -17,8 +17,8 @@ an ACTIVE agent with its tools bound. Attach knowledge bases to ground answers.
 
 | Template | What it does today | Tools (policy) | Planned additions |
 |---|---|---|---|
-| `executive-ai` | briefings from open tasks, research with citations, action-item capture as assigned tasks, follow-up tracking, reminders to colleagues | time, org settings, `search_knowledge`, `list_tasks`, `create_task`, `update_task`, `notify_member` (**approval required**) | calendar, email drafting/sending |
-| `customer-ai` | answers from approved knowledge only, qualifies requests into follow-up tasks, escalates refunds/complaints/risk | time, org settings, `search_knowledge`, `create_task` | WhatsApp/email/web-chat channels, ticketing/CRM |
+| `executive-ai` | briefings from open tasks, research with citations, action-item capture as assigned tasks, follow-up tracking, reminders to colleagues | time, org settings, `search_knowledge`, `list_data_tables`, `query_data_table`, `list_tasks`, `create_task`, `update_task`, `notify_member` (**approval required**) | calendar, email drafting/sending |
+| `customer-ai` | answers from approved knowledge only, qualifies requests into follow-up tasks, escalates refunds/complaints/risk | time, org settings, `search_knowledge`, `list_data_tables`, `query_data_table`, `create_task` | WhatsApp/email/web-chat channels, ticketing/CRM |
 
 Both run on the shared runtime: permission ceiling, risk policy, approvals,
 escalation (with operator alerts), run traces and audit. They can also run in the

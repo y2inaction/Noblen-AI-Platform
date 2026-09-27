@@ -26,8 +26,11 @@ Phases 10–11 (hardening, deployment) still apply.
   `notify_member`); Executive AI and Customer AI templates; background execution
   on a DB-queue worker; approval and escalation alerts; separation of duties.
   *Carried forward:* provider-native replay and stale-run re-queueing.
-- ⬜ **M3: Knowledge permissions.** Document/collection ACLs by user and role, and
-  structured retrieval.
+- ✅ **M3: Knowledge permissions + structured retrieval.** Knowledge-base and
+  document visibility with user/role grants, enforced in SQL before ranking;
+  agents read as their initiator; archived bases unsearchable; CSV/XLSX tables
+  with a declarative query API and agent tools (`list_data_tables`,
+  `query_data_table`).
 - ⬜ **M4: Memory.** User, agent and organizational memory stores.
 - ⬜ **M5: Workflow engine.** Triggers, steps, branching, retries, approvals, schedules.
 - ⬜ **M6: Integrations.** MCP adapter, credential references, email/calendar/CRM.

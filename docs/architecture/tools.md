@@ -40,12 +40,19 @@ exposes both (`GET /api/v1/tools`).
 | `list_tasks` (M2) | LOW | `task:view` | AUTO |
 | `update_task` (M2) | MEDIUM | `task:manage` | AUTO |
 | `notify_member` (M2) | MEDIUM | `member:view` | AUTO (Executive AI binds it as APPROVAL_REQUIRED) |
+| `list_data_tables` (M3) | LOW | `knowledge:search` | AUTO |
+| `query_data_table` (M3) | LOW | `knowledge:search` | AUTO |
 
 The work tools (M2) act only through `context.workspace`, an `AgentWorkspace`
 that the runtime binds to the run's organization, agent, run and initiator.
 Assignees and recipients are addressed by email and must be **active members of
 that organization**. Tasks record the agent and run that created them. Nothing
 can be sent outside the organization.
+
+The table tools (M3) act only through `context.knowledge_tables`. It is scoped to
+the agent's attached knowledge bases and to what the run's initiator may read,
+and it re-checks both on every call. Queries use the declarative spec described
+in [knowledge.md](knowledge.md#structured-retrieval-m3), never raw SQL.
 
 Integrations (email, calendar, CRM, messaging, payments) are not stubbed. Each
 will arrive as a real handler with an honest risk level and permission.

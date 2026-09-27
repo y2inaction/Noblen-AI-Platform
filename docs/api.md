@@ -131,6 +131,16 @@ escalated). See [`architecture/agents.md`](./architecture/agents.md).
 | POST | `/documents/{id}/ingest` (reprocess) | `knowledge:ingest` |
 | POST | `/knowledge/search` | `knowledge:search` |
 | POST/GET/DELETE | `/agents/{id}/knowledge-bases` (+ `/{kb_id}`) | `knowledge:manage_sources` / `agent:view` |
+| GET/PUT | `/knowledge-bases/{id}/access` (M3) | `knowledge:manage_access` |
+| GET/PUT | `/documents/{id}/access` (M3) | `knowledge:manage_access` |
+| GET | `/knowledge/tables?knowledge_base_id=&document_id=` (M3) | `knowledge:view` |
+| POST | `/knowledge/tables/{id}/query` (M3) | `knowledge:search` |
+
+Since M3, every knowledge endpoint returns only what the caller may read.
+Anything else is a 404. Access bodies look like
+`{"visibility": "RESTRICTED", "grants": [{"principal_type": "ROLE", "principal": "MANAGER"}]}`.
+Knowledge-base visibility is `ORGANIZATION` or `RESTRICTED`; document visibility is
+`INHERIT` or `RESTRICTED`.
 
 See [`knowledge.md`](./knowledge.md) for the ingestion pipeline, pgvector retrieval,
 citations, and the `search_knowledge` RAG tool.

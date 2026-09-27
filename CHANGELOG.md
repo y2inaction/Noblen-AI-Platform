@@ -6,6 +6,29 @@ and the project uses Conventional Commits.
 
 ## [Unreleased]
 
+### Added — Noblen AI 3.0, Milestone 3 (Knowledge permissions + structured retrieval)
+- **Knowledge ACLs:** knowledge-base visibility (`ORGANIZATION` / `RESTRICTED`) and
+  document visibility (`INHERIT` / `RESTRICTED`) with user and role grants
+  (`/knowledge-bases/{id}/access`, `/documents/{id}/access`). New permissions:
+  `knowledge:manage_access` (MANAGER+) and `knowledge:read_all` (ADMIN). The access
+  check is a SQL predicate in every knowledge query, applied before ranking and top-k.
+- **Agents read as their initiator:** `search_knowledge` and the table tools only
+  see what the user who started the run may read.
+- **Tabular knowledge:** CSV and XLSX uploads become typed tables (`knowledge_tables`,
+  `knowledge_table_rows`) as well as searchable text. They are queried with a
+  declarative spec (filters, one aggregate, group-by, order, limit; no raw SQL)
+  through `GET /knowledge/tables`, `POST /knowledge/tables/{id}/query`, and the agent
+  tools `list_data_tables` / `query_data_table`. Both templates bind the new tools.
+- Migration `3a27a8c10dcf`; `openpyxl` dependency; `KNOWLEDGE_MAX_TABLE_ROWS`,
+  `KNOWLEDGE_MAX_TABLE_COLUMNS`, `KNOWLEDGE_MAX_QUERY_ROWS` settings.
+
+### Fixed — Milestone 3
+- Archived and paused knowledge bases were still searchable. Search now only
+  covers `ACTIVE` bases.
+- Re-uploading a restricted document's bytes no longer reveals its id through the
+  duplicate check.
+- Docs previously listed CSV/XLSX as supported before they were; they are now.
+
 ### Added — Noblen AI 3.0, Milestone 2 (First AI Workforce)
 - **Tasks and notifications:** tenant-scoped `tasks` and in-app `notifications`,
   with `/tasks` and `/notifications` APIs. Assignees and recipients must be

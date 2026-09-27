@@ -87,9 +87,10 @@ answers the remaining calls of the paused turn, and continues the loop.
    approval/escalation alerts, separation of duties. *Carried forward:*
    provider-native replay (needed only before defaulting to a model that thinks
    by default) and automatic re-queueing of stale runs.
-3. **M3: Knowledge permissions.** Add document/collection ACLs by user and role on
-   top of the Phase 4 org + agent scoping, plus structured (SQL) retrieval next to
-   vector search.
+3. **M3: Knowledge permissions + structured retrieval** ✅ Knowledge-base and
+   document ACLs by user and role, enforced inside the retrieval query; agents read
+   as their initiator; CSV/XLSX tables with a declarative query spec and the
+   `list_data_tables` / `query_data_table` tools.
 4. **M4: Memory.** Add user, agent and organizational memory stores with explicit
    write paths.
 5. **M5: Workflow engine.** Triggers, steps, branching, retries, approval steps and

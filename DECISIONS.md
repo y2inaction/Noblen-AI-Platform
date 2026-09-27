@@ -274,3 +274,27 @@ tools that genuinely work, and planned capabilities are listed separately.
 **Consequences:** BusinessOS and IndustryOS packages can ship as template sets.
 Improving a template does not change existing agents: the organization cuts a
 new version.
+
+### ADR-0027 — Knowledge access is a predicate inside the query; agents read as their initiator
+**Status:** Accepted (3.0 M3). Extends ADR-0014.
+**Decision:** Knowledge-base and document ACLs (visibility plus user/role grants)
+compile to SQL predicates that every knowledge query adds to its `WHERE` clause,
+including semantic search before `ORDER BY … LIMIT`. Nothing is filtered after
+ranking. The reader is a `Principal` resolved from the database. For agents it is
+the user who started the run, intersected with the agent's attached bases.
+Admins hold `knowledge:read_all`.
+**Consequences:** Restricted content cannot leak through ranking, counts or
+top-k starvation. An agent can never read more than its initiator. Grants are
+per resource; group principals can be added to the same predicate later.
+
+### ADR-0028 — Tabular knowledge is typed JSON rows queried with a declarative spec
+**Status:** Accepted (3.0 M3)
+**Decision:** CSV/XLSX sheets are stored as tables with typed columns (`number` or
+`text`) and JSON rows, and queried through a small spec (filters, one aggregate,
+group-by, order, limit) compiled to SQL JSON-path expressions with bound values.
+No model- or user-written SQL is ever executed. The rows are also embedded as
+text for semantic search.
+**Consequences:** Exact counts and totals from spreadsheets, portable across
+PostgreSQL and SQLite, and governed by the same access rules. JSON rows are not
+indexed per column, so very large tables are bounded by `KNOWLEDGE_MAX_TABLE_ROWS`.
+Joins and external databases need a later design.
