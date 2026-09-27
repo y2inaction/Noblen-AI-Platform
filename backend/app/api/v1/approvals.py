@@ -16,8 +16,9 @@ from app.agents.tools.registry import validate_arguments
 from app.ai.errors import AIError
 from app.api.deps import TenantContext, require_permission
 from app.api.v1.ai import translate_ai_error
-from app.core.exceptions import ValidationError
+from app.core.exceptions import PermissionDeniedError, ValidationError
 from app.db.session import get_db
+from app.models.organization import Organization
 from app.models.tool import Tool
 from app.rbac.permissions import Permission
 from app.schemas.approval import (
@@ -56,6 +57,23 @@ async def get_approval(
     return ApprovalOut.model_validate(approval)
 
 
+async def _enforce_separation_of_duties(
+    db: AsyncSession, ctx: TenantContext, approval_id: uuid.UUID
+) -> None:
+    """With `require_independent_approval` on, the person who started the run
+    can never decide on its actions — not even a platform superuser."""
+    org = await db.get(Organization, ctx.organization_id)
+    if org is None or not org.require_independent_approval:
+        return
+    approval = await service.get_approval(db, ctx.organization_id, approval_id)
+    if approval.requested_by is not None and approval.requested_by == ctx.user.id:
+        raise PermissionDeniedError(
+            "This organization requires independent approval: you started this task, "
+            "so another reviewer must decide.",
+            error_code="independent_approval_required",
+        )
+
+
 async def _decide(
     db: AsyncSession,
     ctx: TenantContext,
@@ -66,6 +84,7 @@ async def _decide(
     note: str | None = None,
     modified_payload: dict[str, Any] | None = None,
 ) -> ApprovalDecisionOut:
+    await _enforce_separation_of_duties(db, ctx, approval_id)
     approval = (
         await service.approve(
             db,

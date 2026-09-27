@@ -91,6 +91,7 @@ class ToolRiskLevel(str, enum.Enum):
 
 # ---- AI Workforce operations (Noblen AI 3.0, M1) ----
 class RunStatus(str, enum.Enum):
+    QUEUED = "QUEUED"  # accepted for background execution (M2)
     RUNNING = "RUNNING"
     AWAITING_APPROVAL = "AWAITING_APPROVAL"
     COMPLETED = "COMPLETED"
@@ -110,6 +111,21 @@ class RunStepStatus(str, enum.Enum):
     FAILED = "FAILED"
     DENIED = "DENIED"
     PENDING = "PENDING"
+
+
+# ---- Work items (Noblen AI 3.0, M2) ----
+class TaskStatus(str, enum.Enum):
+    OPEN = "OPEN"
+    IN_PROGRESS = "IN_PROGRESS"
+    DONE = "DONE"
+    CANCELLED = "CANCELLED"
+
+
+class TaskPriority(str, enum.Enum):
+    LOW = "LOW"
+    NORMAL = "NORMAL"
+    HIGH = "HIGH"
+    URGENT = "URGENT"
 
 
 # ---- Knowledge + RAG (Phase 4) ----

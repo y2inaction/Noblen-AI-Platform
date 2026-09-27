@@ -111,9 +111,16 @@ class SearchKnowledgeTool(ToolHandler):
         return ToolResult.success(**result)
 
 
-BUILTIN_TOOLS: list[ToolHandler] = [
-    GetCurrentTimeTool(),
-    GetOrganizationSettingsTool(),
-    EchoTool(),
-    SearchKnowledgeTool(),
-]
+def _all_builtin_tools() -> list[ToolHandler]:
+    from app.agents.tools.work_tools import WORK_TOOLS
+
+    return [
+        GetCurrentTimeTool(),
+        GetOrganizationSettingsTool(),
+        EchoTool(),
+        SearchKnowledgeTool(),
+        *WORK_TOOLS,
+    ]
+
+
+BUILTIN_TOOLS: list[ToolHandler] = _all_builtin_tools()

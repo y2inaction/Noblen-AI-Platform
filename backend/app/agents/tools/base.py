@@ -27,6 +27,9 @@ class ToolContext:
     # An async callable(query, knowledge_base_ids, top_k) -> dict that performs a
     # tenant- AND agent-scoped retrieval. Tools never get raw DB/gateway access.
     knowledge_search: Any = None
+    # Tenant-, agent- and run-bound access to tasks and notifications
+    # (`app.services.work_service.AgentWorkspace`), injected by the runtime.
+    workspace: Any = None
 
 
 @dataclass

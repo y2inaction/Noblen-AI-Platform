@@ -17,6 +17,7 @@ class OrganizationPublic(BaseModel):
     currency: str
     timezone: str
     locale: str
+    require_independent_approval: bool = False
 
 
 class OrganizationUpdate(BaseModel):
@@ -24,6 +25,8 @@ class OrganizationUpdate(BaseModel):
     currency: str | None = Field(default=None, max_length=8)
     timezone: str | None = Field(default=None, max_length=64)
     locale: str | None = Field(default=None, max_length=16)
+    # Separation of duties for AI actions: initiators cannot approve their own runs.
+    require_independent_approval: bool | None = None
 
 
 class MemberPublic(BaseModel):

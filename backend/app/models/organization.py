@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, String
+from sqlalchemy import Boolean, String, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.config import settings
@@ -26,6 +26,12 @@ class Organization(UUIDMixin, TimestampMixin, Base):
     currency: Mapped[str] = mapped_column(String(8), default=settings.DEFAULT_CURRENCY)
     timezone: Mapped[str] = mapped_column(String(64), default=settings.DEFAULT_TIMEZONE)
     locale: Mapped[str] = mapped_column(String(16), default=settings.DEFAULT_LOCALE)
+
+    # AI governance (Noblen AI 3.0, M2): when on, the person who started an agent
+    # run can never approve that run's actions (separation of duties).
+    require_independent_approval: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
 
     members: Mapped[list[OrganizationMember]] = relationship(
         back_populates="organization", cascade="all, delete-orphan"

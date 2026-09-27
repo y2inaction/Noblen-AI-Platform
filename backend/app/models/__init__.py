@@ -33,6 +33,7 @@ from app.models.run import AgentRun, AgentRunStep
 from app.models.team import Team, TeamMember
 from app.models.tool import AgentTool, Tool
 from app.models.user import User
+from app.models.work import Notification, Task
 
 __all__ = [
     "Base",
@@ -64,4 +65,6 @@ __all__ = [
     "Team",
     "TeamMember",
     "User",
+    "Task",
+    "Notification",
 ]
