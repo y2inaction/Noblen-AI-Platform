@@ -1,14 +1,29 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { API_BASE_URL } from "@/lib/api";
 import { api } from "@/lib/client";
-import { clearSession, loadSession, saveSession, type Session } from "@/lib/session";
+import {
+  clearSession,
+  loadSession,
+  parseSession,
+  readRawSession,
+  saveSession,
+  subscribeSession,
+} from "@/lib/session";
 import type { Access, Me } from "@/lib/types";
 
 interface SessionContextValue {
-  session: Session;
+  session: NonNullable<ReturnType<typeof parseSession>>;
   access: Access | null;
   me: Me | null;
   can: (permission: string) => boolean;
@@ -26,26 +41,38 @@ export function useSession(): SessionContextValue {
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const [session, setSession] = useState<Session | null>(null);
-  const [access, setAccess] = useState<Access | null>(null);
+  // Read sessionStorage as an external store: null during server rendering and
+  // hydration, the stored session afterwards, and updated on save/clear.
+  const raw = useSyncExternalStore(subscribeSession, readRawSession, () => null);
+  const session = useMemo(() => parseSession(raw), [raw]);
+  const organizationId = session?.organizationId ?? null;
+  // Access is fetched per organization; a stale answer for another one is ignored.
+  const [accessFor, setAccessFor] = useState<{ org: string; access: Access | null } | null>(null);
   const [me, setMe] = useState<Me | null>(null);
+  const access = accessFor && accessFor.org === organizationId ? accessFor.access : null;
 
   useEffect(() => {
-    const stored = loadSession();
-    if (!stored) {
+    // Check storage itself: during hydration `session` is still the server
+    // snapshot (null) even when the person is signed in.
+    if (!loadSession()) {
       const next = encodeURIComponent(window.location.pathname);
       router.replace(`/login?next=${next}`);
-      return;
     }
-    setSession(stored);
-  }, [router]);
+  }, [session, router]);
 
   useEffect(() => {
-    if (!session) return;
-    setAccess(null);
-    api<Access>("/organizations/current/access").then(setAccess).catch(() => setAccess(null));
-    api<Me>("/auth/me").then(setMe).catch(() => setMe(null));
-  }, [session]);
+    if (!organizationId) return;
+    let alive = true;
+    api<Access>("/organizations/current/access")
+      .then((value) => alive && setAccessFor({ org: organizationId, access: value }))
+      .catch(() => alive && setAccessFor({ org: organizationId, access: null }));
+    api<Me>("/auth/me")
+      .then((value) => alive && setMe(value))
+      .catch(() => alive && setMe(null));
+    return () => {
+      alive = false;
+    };
+  }, [organizationId]);
 
   const can = useCallback(
     (permission: string) => Boolean(access?.permissions.includes(permission)),
@@ -56,9 +83,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     (organizationId: string) => {
       const current = loadSession();
       if (!current || current.organizationId === organizationId) return;
-      const updated = { ...current, organizationId };
-      saveSession(updated);
-      setSession(updated);
+      saveSession({ ...current, organizationId });
       router.push("/dashboard");
     },
     [router],

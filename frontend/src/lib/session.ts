@@ -20,21 +20,48 @@ export interface Session {
 }
 
 const KEY = "noblen.session";
+const CHANGED = "noblen:session-changed";
 
-export function loadSession(): Session | null {
+/** The stored session as a string (stable for useSyncExternalStore snapshots). */
+export function readRawSession(): string | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.sessionStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as Session) : null;
+    return window.sessionStorage.getItem(KEY);
   } catch {
     return null;
   }
 }
 
+export function parseSession(raw: string | null): Session | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as Session;
+  } catch {
+    return null;
+  }
+}
+
+export function loadSession(): Session | null {
+  return parseSession(readRawSession());
+}
+
+function changed(): void {
+  window.dispatchEvent(new Event(CHANGED));
+}
+
 export function saveSession(session: Session): void {
   window.sessionStorage.setItem(KEY, JSON.stringify(session));
+  changed();
 }
 
 export function clearSession(): void {
-  if (typeof window !== "undefined") window.sessionStorage.removeItem(KEY);
+  if (typeof window === "undefined") return;
+  window.sessionStorage.removeItem(KEY);
+  changed();
+}
+
+/** Subscribe to session changes in this tab (useSyncExternalStore). */
+export function subscribeSession(callback: () => void): () => void {
+  window.addEventListener(CHANGED, callback);
+  return () => window.removeEventListener(CHANGED, callback);
 }

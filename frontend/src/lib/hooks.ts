@@ -10,37 +10,38 @@ export interface Loaded<T> {
   reload: () => void;
 }
 
-/** GET `path` (skipped when null) and re-fetch when it changes or on reload(). */
+/** GET `path` (skipped when null) and re-fetch when it changes or on reload().
+ *  Data from the previous request stays visible while the next one loads. */
 export function useApi<T>(path: string | null): Loaded<T> {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(path !== null);
   const [tick, setTick] = useState(0);
+  const key = path === null ? null : `${tick}:${path}`;
+  const [result, setResult] = useState<{ key: string | null; data: T | null; error: string | null }>({
+    key: null,
+    data: null,
+    error: null,
+  });
 
   useEffect(() => {
-    if (path === null) {
-      setLoading(false);
-      return;
-    }
+    if (key === null || path === null) return;
     const controller = new AbortController();
-    setLoading(true);
     api<T>(path, { signal: controller.signal })
-      .then((value) => {
-        setData(value);
-        setError(null);
-      })
+      .then((value) => setResult({ key, data: value, error: null }))
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;
-        setError(err instanceof Error ? err.message : "Something went wrong.");
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        const message = err instanceof Error ? err.message : "Something went wrong.";
+        setResult((prev) => ({ key, data: prev.data, error: message }));
       });
     return () => controller.abort();
-  }, [path, tick]);
+  }, [key, path]);
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
-  return { data, error, loading, reload };
+  const current = key !== null && result.key === key;
+  return {
+    data: result.data,
+    error: current ? result.error : null,
+    loading: key !== null && !current,
+    reload,
+  };
 }
 
 /** Run a mutation, tracking busy/error state. Returns the result or null on error. */

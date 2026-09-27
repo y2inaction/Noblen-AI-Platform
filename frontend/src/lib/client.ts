@@ -46,6 +46,8 @@ function signOutAndRedirect(): void {
   clearSession();
   if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
     const next = encodeURIComponent(window.location.pathname + window.location.search);
+    // A full navigation on purpose: it drops all in-memory state of the old session.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.assign(`/login?next=${next}`);
   }
 }
