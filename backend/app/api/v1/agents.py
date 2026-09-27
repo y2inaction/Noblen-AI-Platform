@@ -216,6 +216,11 @@ async def execute_agent(
         )
         conversation_id = conversation.id
     else:
+        # Continuing a conversation loads its history into the agent's context, so
+        # only its participants may do it.
+        await conversation_service.get_conversation_for(
+            db, ctx.organization_id, body.conversation_id, ctx.user.id
+        )
         conversation_id = body.conversation_id
 
     try:

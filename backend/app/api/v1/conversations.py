@@ -1,4 +1,4 @@
-"""Conversation API (tenant-scoped)."""
+"""Conversation API: tenant-scoped, and private to each conversation's participants."""
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ async def list_conversations(
     offset: int = Query(default=0, ge=0),
 ) -> ConversationListOut:
     items, total = await service.list_conversations(
-        db, ctx.organization_id, limit=limit, offset=offset
+        db, ctx.organization_id, ctx.user.id, limit=limit, offset=offset
     )
     return ConversationListOut(
         items=[ConversationOut.model_validate(c) for c in items], total=total
@@ -57,7 +57,9 @@ async def get_conversation(
     ctx: TenantContext = Depends(require_permission(Permission.CONVERSATION_VIEW)),
     db: AsyncSession = Depends(get_db),
 ) -> ConversationOut:
-    conversation = await service.get_conversation(db, ctx.organization_id, conversation_id)
+    conversation = await service.get_conversation_for(
+        db, ctx.organization_id, conversation_id, ctx.user.id
+    )
     return ConversationOut.model_validate(conversation)
 
 
@@ -67,8 +69,9 @@ async def list_messages(
     ctx: TenantContext = Depends(require_permission(Permission.CONVERSATION_VIEW)),
     db: AsyncSession = Depends(get_db),
 ) -> list[MessageOut]:
-    # Tenant + existence check, then scoped message fetch.
-    await service.get_conversation(db, ctx.organization_id, conversation_id)
+    # Participants only: conversations can hold private memories and restricted
+    # knowledge that the agent retrieved for this person.
+    await service.get_conversation_for(db, ctx.organization_id, conversation_id, ctx.user.id)
     messages = await service.get_messages(db, ctx.organization_id, conversation_id)
     return [MessageOut.model_validate(m) for m in messages]
 
@@ -80,7 +83,7 @@ async def add_message(
     ctx: TenantContext = Depends(require_permission(Permission.CONVERSATION_WRITE)),
     db: AsyncSession = Depends(get_db),
 ) -> MessageOut:
-    await service.get_conversation(db, ctx.organization_id, conversation_id)
+    await service.get_conversation_for(db, ctx.organization_id, conversation_id, ctx.user.id)
     message = await service.add_message(
         db,
         ctx.organization_id,

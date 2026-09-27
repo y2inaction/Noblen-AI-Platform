@@ -49,6 +49,10 @@ Model arguments cannot choose a different person, agent or organization.
 
 ### Safeguards
 
+- **Conversations are private.** A run's conversation, which contains any
+  `recall_memories` results, is visible only to its participants: the person who
+  ran the agent.
+
 - **No secrets.** Content that looks like a credential (password or API-key
   assignments, `sk-…`, AWS or GitHub tokens, private keys) or a card number
   (15–19 digits passing the Luhn check) is rejected. Phone numbers are allowed.

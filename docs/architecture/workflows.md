@@ -106,6 +106,9 @@ organization.
   arguments, a failed tool result, a missing reference, an agent escalation. After
   that, `on_failure` applies. `escalate` ends the run `ESCALATED` and notifies
   operators (`agent:operate`) and the person it acts for.
+- **Visibility.** Step outputs, including agent answers, are visible to everyone
+  with `workflow:view`. Agent steps run with the activator's access, so avoid
+  shared workflows over knowledge restricted to a few people.
 - **Crash recovery.** A run left `RUNNING` by a crashed worker is re-queued when
   it stopped between steps or during a condition or approval step. If it stopped
   mid-agent or mid-tool, it is escalated, never re-executed (ADR-0033).

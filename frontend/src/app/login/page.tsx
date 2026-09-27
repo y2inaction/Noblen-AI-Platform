@@ -4,15 +4,11 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { login, register, type AuthResponse } from "@/lib/api";
+import { safeNext } from "@/lib/redirect";
 import { saveSession } from "@/lib/session";
 
 const input =
   "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:border-noblen-500 focus:outline-none focus:ring-2 focus:ring-noblen-200";
-
-function safeNext(value: string | null): string {
-  // Only same-site paths: never redirect to another origin after sign-in.
-  return value && value.startsWith("/") && !value.startsWith("//") ? value : "/dashboard";
-}
 
 function LoginForm() {
   const router = useRouter();
@@ -40,7 +36,7 @@ function LoginForm() {
         organizationId: auth.organization_id,
         user: { id: auth.user.id, email: auth.user.email, full_name: auth.user.full_name },
       });
-      router.replace(safeNext(params.get("next")));
+      router.replace(safeNext(params.get("next"), window.location.origin));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in failed");
     } finally {

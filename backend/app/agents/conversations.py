@@ -1,11 +1,18 @@
-"""Conversation service (tenant-scoped)."""
+"""Conversation service (tenant-scoped).
+
+Conversations are private to their participants (the creator, plus anyone added
+as a participant). They hold everything an agent saw and said on someone's
+behalf, including private user memories and knowledge restricted to that person,
+so `readable_by` / `get_conversation_for` are the checks people-facing access
+must use. Being in the same organization is not enough.
+"""
 
 from __future__ import annotations
 
 import uuid
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.errors import ConversationNotFound
@@ -56,18 +63,56 @@ async def get_conversation(
     return conversation
 
 
+def readable_by(user_id: uuid.UUID) -> Any:
+    """SQL predicate: the user created the conversation or is a participant."""
+    participant = (
+        select(ConversationParticipant.id)
+        .where(
+            ConversationParticipant.conversation_id == Conversation.id,
+            ConversationParticipant.user_id == user_id,
+        )
+        .exists()
+    )
+    return or_(Conversation.created_by == user_id, participant)
+
+
+async def get_conversation_for(
+    db: AsyncSession, organization_id: uuid.UUID, conversation_id: uuid.UUID, user_id: uuid.UUID
+) -> Conversation:
+    """The conversation if this person may see it; otherwise not found (no hint it exists)."""
+    conversation = (
+        await db.execute(
+            tenant_scoped(select(Conversation), Conversation, organization_id).where(
+                Conversation.id == conversation_id, readable_by(user_id)
+            )
+        )
+    ).scalar_one_or_none()
+    if conversation is None:
+        raise ConversationNotFound("Conversation not found.")
+    return conversation
+
+
 async def list_conversations(
-    db: AsyncSession, organization_id: uuid.UUID, *, limit: int = 50, offset: int = 0
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID,
+    *,
+    limit: int = 50,
+    offset: int = 0,
 ) -> tuple[list[Conversation], int]:
+    """The conversations this person takes part in."""
     total = (
         await db.execute(
-            tenant_scoped(select(func.count(Conversation.id)), Conversation, organization_id)
+            tenant_scoped(select(func.count(Conversation.id)), Conversation, organization_id).where(
+                readable_by(user_id)
+            )
         )
     ).scalar_one()
     rows = (
         (
             await db.execute(
                 tenant_scoped(select(Conversation), Conversation, organization_id)
+                .where(readable_by(user_id))
                 .order_by(Conversation.created_at.desc())
                 .limit(limit)
                 .offset(offset)

@@ -22,6 +22,20 @@ and the project uses Conventional Commits.
 - Backend dependencies audited with pip-audit: no known vulnerabilities in
   application dependencies.
 
+### Security fixes — found by the 3.0 security review
+- **Conversations are now private to their participants** (**behavior change**).
+  Before, any organization member with `conversation:view` (VIEWER included) could
+  list and read every conversation. Since M3 and M4 these can contain another
+  person's private user memories (`recall_memories` results) and knowledge
+  restricted to them. Listing, reading, posting, and continuing a conversation via
+  `POST /agents/{id}/execute` are now limited to its creator and participants.
+  Others get 404, admins included.
+- **Open redirect after sign-in fixed.** `?next=` values such as `/\evil.com`,
+  `/%09/evil.com` or `/%0A/evil.com` passed a prefix check and sent the person to
+  another site right after a real sign-in. The target is now resolved as a URL and
+  must be on the same origin.
+
+
 ### Added — Noblen AI 3.0, Milestone 7 (Operating-environment UI)
 - **Web UI** (Next.js, no new runtime dependencies) over the public API:
   - dashboard with the live 7-day operations overview, recent runs, escalations

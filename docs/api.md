@@ -77,6 +77,13 @@ format, cost estimation, and error semantics.
 | GET | `/conversations` · `/{id}` · `/{id}/messages` | `conversation:view` |
 | POST | `/conversations/{id}/messages` | `conversation:write` |
 
+Since the 3.0 security review, conversations are **private to their participants**
+(the creator plus added participants). Other members, admins included, do not see
+them in lists and get 404 on read, write, or `POST /agents/{id}/execute` with that
+`conversation_id`. They can hold private user memories and restricted knowledge that
+an agent retrieved for that person. Run traces (`/runs`) stay visible with
+`run:view`; they record tool names and argument names, never values or content.
+
 ### Tools — `/api/v1` (Phase 3)
 | Method | Path | Permission |
 |--------|------|------------|

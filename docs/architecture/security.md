@@ -90,6 +90,20 @@ to the API origin, plus frame, sniffing, referrer
 and permissions headers. Permission-based hiding is a convenience; the API enforces
 everything. See [operating-environment.md](operating-environment.md#session-and-security).
 
+## Conversation privacy (security review)
+
+Conversations hold everything an agent saw and said for someone, including
+`recall_memories` results and passages from knowledge restricted to that person.
+They are readable, writable and continuable only by their participants, enforced in
+SQL (`readable_by`). Other members, admins included, get 404. Being in the same
+organization is not enough. Run traces remain organization-visible because they
+never contain content.
+
+Workflow runs are shared automations. Step outputs, including an agent step's
+answer, are visible to everyone with `workflow:view`. An agent step runs with its
+activator's access, so do not build shared workflows over knowledge the whole team
+should not read.
+
 ## Separation of duties (M2)
 
 `organizations.require_independent_approval` stops initiators from deciding
