@@ -17,7 +17,13 @@ from functools import lru_cache
 from typing import TypeVar
 
 from app.ai.base import AIProvider
-from app.ai.errors import AIError, AITimeoutError, AIUnknownError, AIUnknownProviderError
+from app.ai.errors import (
+    AIError,
+    AIInvalidRequestError,
+    AITimeoutError,
+    AIUnknownError,
+    AIUnknownProviderError,
+)
 from app.ai.pricing import pricing_registry
 from app.ai.providers.anthropic_provider import AnthropicProvider
 from app.ai.providers.mock import MockProvider
@@ -128,9 +134,56 @@ class AIGateway:
                 continue
             raise error
 
+    def _candidates(self, request: GenerationRequest) -> list[tuple[str | None, str | None]]:
+        """Primary (provider, model), then request fallbacks, then platform fallbacks."""
+        candidates: list[tuple[str | None, str | None]] = [(request.provider, request.model)]
+        for spec in [*request.fallbacks, *settings.AI_FALLBACK_MODELS]:
+            provider_name, _, model_name = spec.partition(":")
+            candidate = (provider_name.strip() or None, model_name.strip() or None)
+            if candidate not in candidates:
+                candidates.append(candidate)
+        return candidates
+
     async def generate(self, request: GenerationRequest) -> GenerationResponse:
-        provider = self._resolve_provider(request.provider)
-        model = request.model or self.default_model or provider.default_model
+        """Generate with the primary model, falling back in order on failure.
+
+        Each candidate gets its own retries. Invalid-request errors are not
+        retried elsewhere: they describe the request, not the provider.
+        """
+        last_error: AIError | None = None
+        primary: str | None = None
+        for index, (provider_name, model_name) in enumerate(self._candidates(request)):
+            try:
+                provider = self._resolve_provider(provider_name)
+            except AIUnknownProviderError as err:
+                if index == 0:
+                    raise
+                # Skip a misconfigured fallback, but keep the real upstream error.
+                last_error = last_error or err
+                continue
+            if index == 0:  # unchanged Phase 2 resolution for the primary
+                model = model_name or self.default_model or provider.default_model
+            else:
+                model = model_name or provider.default_model
+            label = f"{provider.name}:{model}"
+            try:
+                response = await self._generate_once(request, provider, model)
+            except AIInvalidRequestError:
+                raise
+            except AIError as err:
+                last_error = err
+                primary = primary or label
+                continue
+            if primary is not None:
+                response.metadata = {**response.metadata, "fallback_from": primary}
+                logger.warning("ai_fallback_used", fallback_from=primary, served_by=label)
+            return response
+        assert last_error is not None
+        raise last_error
+
+    async def _generate_once(
+        self, request: GenerationRequest, provider: AIProvider, model: str
+    ) -> GenerationResponse:
         request_id = uuid.uuid4().hex
         started = time.perf_counter()
 

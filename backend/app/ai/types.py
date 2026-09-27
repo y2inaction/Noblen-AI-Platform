@@ -55,6 +55,9 @@ class GenerationRequest(BaseModel):
     system: str | None = None
     provider: str | None = None
     model: str | None = None
+    # Ordered "provider:model" fallbacks tried when the primary fails (after its
+    # own retries) with anything but an invalid-request error.
+    fallbacks: list[str] = Field(default_factory=list, max_length=5)
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_output_tokens: int | None = Field(default=None, ge=1, le=32000)
     stream: bool = False

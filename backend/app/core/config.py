@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     AI_DEFAULT_EMBEDDING_PROVIDER: str = "openai"
     AI_DEFAULT_EMBEDDING_MODEL: str = "text-embedding-3-small"
 
+    # Platform-wide "provider:model" fallbacks, tried after a request's own
+    # fallbacks (comma-separated), e.g. "openai:gpt-4o,anthropic:claude-haiku-4-5".
+    AI_FALLBACK_MODELS: list[str] = Field(default_factory=list)
+
     # Resilience.
     AI_REQUEST_TIMEOUT_SECONDS: float = 60.0
     AI_MAX_RETRIES: int = 2
@@ -116,7 +120,7 @@ class Settings(BaseSettings):
     DEFAULT_TIMEZONE: str = "Africa/Lagos"
     DEFAULT_LOCALE: str = "en"
 
-    @field_validator("BACKEND_CORS_ORIGINS", mode="before")
+    @field_validator("BACKEND_CORS_ORIGINS", "AI_FALLBACK_MODELS", mode="before")
     @classmethod
     def _split_cors(cls, value: object) -> object:
         if isinstance(value, str):
