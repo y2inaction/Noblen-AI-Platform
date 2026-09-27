@@ -126,6 +126,21 @@ Retention is set with `PATCH /organizations/current` `{"memory_retention_days": 
 (`org:manage`; `null` keeps memories until deleted). See
 [`architecture/memory.md`](architecture/memory.md).
 
+### Workflows — `/api/v1` (Noblen AI 3.0, M5)
+| Method | Path | Permission |
+|---|---|---|
+| GET/POST | `/workflows` (`{name, description?, definition}`) | `workflow:view` / `workflow:manage` |
+| GET/PATCH/DELETE | `/workflows/{id}` (DELETE archives) | `workflow:view` / `workflow:manage` |
+| GET/POST | `/workflows/{id}/versions` (`{definition}`) | `workflow:view` / `workflow:manage` |
+| POST | `/workflows/{id}/activate` (`{version_id?}`) · `/workflows/{id}/pause` | `workflow:manage` |
+| POST | `/workflows/{id}/runs` (`{input, version_id?}`), returns **202** | `workflow:run` (`version_id` test runs: `workflow:manage`) |
+| GET | `/workflow-runs?workflow_id=&status=` · `/workflow-runs/{id}` (with step trace) | `workflow:view` |
+| POST | `/workflow-runs/{id}/approve` · `/reject` (`{note?}`) | `agent:approve_actions` |
+| POST | `/workflow-runs/{id}/cancel` | `agent:operate` |
+
+Runs execute on the worker (`python -m app.agents.worker`). See
+[`architecture/workflows.md`](architecture/workflows.md) for the definition format.
+
 ### Runs & AI Operations — `/api/v1` (Noblen AI 3.0, M1)
 | Method | Path | Permission |
 |--------|------|------------|

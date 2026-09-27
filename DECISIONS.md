@@ -314,3 +314,17 @@ data; other modes do not. Recall is text matching for now.
 ceiling, approval, trace, audit) and cannot leak between people through the
 agent. Operators cannot inspect someone's private memories. Semantic recall and
 per-scope retention can be added without changing the model.
+
+### ADR-0030 — Workflows are versioned step lists executed on the DB-queue worker
+**Status:** Accepted (3.0 M5). Supersedes the Celery + beat plan for workflows.
+**Decision:** A workflow is a trigger plus a list of typed steps (`agent`, `tool`,
+`condition`, `approval`) in an immutable version. Runs are queued rows advanced by
+the existing worker, one committed step at a time. Agent steps are ordinary agent
+runs; tool steps use the same handlers and checks as agents. Values move between
+steps through dotted references only, with no template language and no expressions.
+Every run acts for one person (the manual starter or the activator), re-checked
+before each step.
+**Consequences:** Workflows inherit tracing, approvals, escalation, tenancy and
+authorization instead of re-implementing them, and need no new infrastructure.
+There are no parallel branches, sub-workflows or cron expressions yet. Schedules are
+polled, so their precision is the worker's poll interval.

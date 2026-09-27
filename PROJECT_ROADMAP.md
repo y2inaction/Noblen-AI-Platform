@@ -36,7 +36,12 @@ Phases 10–11 (hardening, deployment) still apply.
   `save_agent_memory` (approval by default), `recall_memories` and `forget_user_memory`.
   User memory is private to its person; secrets are rejected; per-organization
   retention with worker purge; `PERSISTENT` agents load memory into context.
-- ⬜ **M5: Workflow engine.** Triggers, steps, branching, retries, approvals, schedules.
+- ✅ **M5: Workflow engine.** Versioned workflows (`/workflows`, `/workflow-runs`) with
+  manual, schedule (`every_minutes`, `daily_at` in org timezone) and task-event
+  triggers; agent, tool, condition and approval steps; `{{ }}` value references (no
+  code); retries with backoff; `fail`/`continue`/`escalate`; run-as authority
+  re-checked per step; kill switch, step budget and event-depth guard; executed by
+  the existing DB-queue worker.
 - ⬜ **M6: Integrations.** MCP adapter, credential references, email/calendar/CRM.
 - ⬜ **M7: Operating-environment UI.** Dashboard, workforce, approvals inbox, runs.
 

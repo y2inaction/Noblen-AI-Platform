@@ -94,8 +94,10 @@ answers the remaining calls of the paused turn, and continues the loop.
 4. **M4: Memory** ✅ Scoped `USER` / `AGENT` / `ORGANIZATION` memory with explicit
    write paths (owner and manager APIs, approval-gated agent tools), private user
    memory, retention, and context loading for `PERSISTENT` agents.
-5. **M5: Workflow engine.** Triggers, steps, branching, retries, approval steps and
-   schedules, with agents as steps.
+5. **M5: Workflow engine** ✅ Versioned workflows with manual, schedule and task-event
+   triggers; agent, tool, condition and approval steps; retries with backoff and
+   failure policies; run-as authority re-checked per step; DB-queued execution on
+   the existing worker.
 6. **M6: Integrations.** An MCP adapter, credential references, and email,
    calendar and CRM tools with declared risk levels.
 7. **M7: Operating-environment UI.** Dashboard, workforce, approvals inbox, run traces.

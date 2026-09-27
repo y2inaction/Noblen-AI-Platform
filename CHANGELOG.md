@@ -6,6 +6,27 @@ and the project uses Conventional Commits.
 
 ## [Unreleased]
 
+### Added — Noblen AI 3.0, Milestone 5 (Workflow engine)
+- **Workflows:** `workflows` with immutable, numbered `workflow_versions`, lifecycle
+  `DRAFT → ACTIVE ⇄ PAUSED → ARCHIVED`, and the `/workflows` API.
+- **Triggers:** manual (`POST /workflows/{id}/runs`, 202), schedules (`every_minutes`
+  or `daily_at` in the organization's timezone) and task events (`task.created`,
+  `task.completed`).
+- **Steps:** `agent` (a real agent run, so approvals and escalation are reused), `tool`
+  (workflow-safe tools with validation, permission ceiling and risk policy),
+  `condition` (branching) and `approval` (human decision, with notifications).
+  Values are passed with `{{ steps.<id>.output… }}` references; there is no
+  template language and no code execution.
+- **Reliability:** per-step retries with exponential backoff; `on_failure` of `fail`,
+  `continue` or `escalate` (operators notified); commit after every step; an
+  append-only step trace (`/workflow-runs/{id}`).
+- **Controls:** runs act for one person, re-checked before each step; kill switch
+  (pause, cancel); separation of duties; HIGH-risk tools always wait for approval;
+  step budget; event-chain depth limit; test runs of draft versions.
+- **Worker:** the existing worker also queues due schedules, resumes workflows whose
+  agent step finished, and executes workflow runs (`FOR UPDATE SKIP LOCKED`).
+- `workflow:run` permission (MEMBER+). Migration `ec44db57f95a`; `WORKFLOW_*` settings.
+
 ### Added — Noblen AI 3.0, Milestone 4 (Memory)
 - **Scoped long-term memory:** a `memories` table with `USER`, `AGENT` and
   `ORGANIZATION` scopes, a subject and provenance (person, agent, run).

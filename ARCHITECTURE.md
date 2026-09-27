@@ -137,12 +137,14 @@ Pipeline: `upload → validate → extract → clean → chunk → embed → sto
 over PDF/DOCX/TXT/CSV/XLSX. Retrieval assembles context from tenant-isolated chunks
 using **pgvector** similarity search, with citations back to source documents.
 
-## 9. Workflow engine (Phase 5)
+## 9. Workflow engine (Noblen AI 3.0 M5)
 
-Triggers (webhook, form, schedule, new lead/message, payment, manual) → nodes
-(AI generate/classify/extract/summarize, condition, HTTP, DB action, email,
-notification, task) with per-run logging. Long-running/scheduled execution runs on
-Celery workers + beat.
+Versioned workflows with manual, schedule and task-event triggers. Steps are
+agent, tool, condition and approval, with retries, failure policies and a per-run
+step trace. Runs are queued in the database and executed by the same worker as
+background agent runs (no Celery; ADR-0025, ADR-0030). Webhook/form/payment
+triggers and HTTP/email steps come with integrations. See
+[`docs/architecture/workflows.md`](docs/architecture/workflows.md).
 
 ## 10. Channels & integrations (Phase 7)
 

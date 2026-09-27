@@ -36,14 +36,15 @@ The hierarchy is `VIEWER ⊂ MEMBER ⊂ OPERATOR ⊂ MANAGER ⊂ ADMIN`. This is
 - **Retrieved content is untrusted data** and cannot change instructions or
   permissions (Phase 4).
 
-## Audit events added in 3.0 (M1–M4)
+## Audit events added in 3.0 (M1–M5)
 
 `agent.run_started`, `agent.run_completed`, `agent.run_escalated`,
 `agent.run_failed`, `agent.run_queued` (M2), `agent.created_from_template` (M2),
 `task.created` / `task.updated` (M2), `agent.tool_denied`, `agent.tool_executed` (MEDIUM/HIGH or
 approved), `agent.approval_requested`, `agent.approval_decided`, `knowledge.access_changed` (M3),
 `memory.created` / `memory.updated` / `memory.deleted` / `memory.user_forgotten` (M4,
-scope and subject only, never content).
+scope and subject only, never content), and the `workflow.*` events (M5; see
+[workflows.md](workflows.md#execution-and-controls)).
 
 ## Knowledge access control (M3)
 
@@ -60,6 +61,14 @@ started the run. Grants are changed with `knowledge:manage_access` and audited a
 person starts. Admins cannot list them. Shared agent memory written by an agent
 needs approval by default. Credentials and card numbers are rejected, and
 retention is configurable per organization. See [memory.md](memory.md).
+
+## Workflow authority (M5)
+
+A workflow run acts for one person: whoever started it manually, or whoever
+activated a scheduled or event-triggered workflow. That person's current role is
+re-checked before every step, so removing a role or membership stops their
+automations. Workflow approvals honour `require_independent_approval`, and
+HIGH-risk tools in workflows always wait for approval. See [workflows.md](workflows.md).
 
 ## Separation of duties (M2)
 

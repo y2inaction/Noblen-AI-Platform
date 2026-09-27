@@ -1,4 +1,9 @@
-# Workflows (design — implemented from Phase 5)
+# Workflows (original design)
+
+> **Implemented in Noblen AI 3.0 M5** as a smaller, production-quality engine: see
+> [`architecture/workflows.md`](architecture/workflows.md) for what exists. Webhook,
+> form, payment and lead triggers and HTTP/email/database nodes are not implemented
+> yet. They need integrations (M6).
 
 A visual workflow engine: `Trigger → Node → Node → Condition → Action`, with every
 execution logged.

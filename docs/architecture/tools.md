@@ -61,6 +61,10 @@ in [knowledge.md](knowledge.md#structured-retrieval-m3), never raw SQL.
 The memory tools (M4) act only through `context.memory`, bound to the run's
 organization, agent, run and initiator. See [memory.md](memory.md).
 
+Workflow tool steps (M5) may only call tools marked `available_in_workflows`:
+time, organization settings, the task tools and `notify_member`. Tools that need
+an agent's scope are reached through an agent step. See [workflows.md](workflows.md).
+
 Integrations (email, calendar, CRM, messaging, payments) are not stubbed. Each
 will arrive as a real handler with an honest risk level and permission.
 
