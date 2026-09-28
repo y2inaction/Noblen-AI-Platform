@@ -396,7 +396,8 @@ from another member's restricted knowledge or private memory via
 `GET /workflow-runs/{id}`. Operators keep metadata. The UI shows content as withheld.
 
 ### ADR-0036 — One visibility model: Tenant, Role, Participant, Owner, Restricted, System
-**Status:** Proposed (security review, 2026-09).
+**Status:** Accepted (2026-09, Milestone 8). Implementation contract for the
+provenance-based widening: [`docs/architecture/milestone-8-provenance.md`](docs/architecture/milestone-8-provenance.md).
 Details: [`docs/architecture/adr-0036-visibility-model.md`](docs/architecture/adr-0036-visibility-model.md).
 **Decision:** Every field of every resource has one of six nested levels. Permissions
 gate actions and resource types; they never widen rows (except the existing
