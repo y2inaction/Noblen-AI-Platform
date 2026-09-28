@@ -15,7 +15,18 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, Numeric, String, Text, Uuid
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    Uuid,
+    false,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TenantMixin, TimestampMixin, UUIDMixin
@@ -62,6 +73,15 @@ class AgentRun(UUIDMixin, TimestampMixin, TenantMixin, Base):
 
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Provenance (M8, ADR-0037): references to the protected sources this run's
+    # content derives from, never the content. NULL means unknown (recorded
+    # before M8) and fails closed; `acting_role` is the person's role at start.
+    sources: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    sources_truncated: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
+    acting_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
 
 class AgentRunStep(UUIDMixin, TimestampMixin, TenantMixin, Base):
