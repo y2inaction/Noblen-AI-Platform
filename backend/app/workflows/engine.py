@@ -31,6 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents import conversations as conversation_service
+from app.agents import provenance
 from app.agents.provenance import ProvenanceCollector
 from app.agents.runtime import AgentRuntime
 from app.agents.tools.base import ToolContext
@@ -66,7 +67,7 @@ from app.workflows.definition import (
     WorkflowDefinition,
     parse,
 )
-from app.workflows.templating import TemplateError, render
+from app.workflows.templating import TemplateError, references, render
 
 logger = get_logger("workflows.engine")
 
@@ -86,6 +87,29 @@ class _Outcome:
     goto: str | None = None  # explicit next step for branches; None = the default
     error: str | None = None
     retryable: bool = False
+
+
+def _templates(step: Any) -> list[Any]:
+    """The values a step renders from the run context."""
+    if isinstance(step, ConditionStep):
+        return [step.left, step.right]
+    if isinstance(step, ApprovalStep):
+        return [step.title, step.details]
+    if isinstance(step, ToolStep):
+        return [step.arguments]
+    if isinstance(step, AgentStep):
+        return [step.input]
+    return []
+
+
+def _merge_into(row: Any, sources: list[Any] | None, truncated: bool) -> None:
+    """Union `sources` into a row's provenance. Deterministic (existing order
+    first), bounded, and monotone: unknown or truncated input truncates the row,
+    and a truncated row stays truncated."""
+    collector = ProvenanceCollector()
+    collector.inherit(row.sources, row.sources_truncated)
+    collector.inherit(sources, truncated)
+    row.sources, row.sources_truncated = collector.snapshot()
 
 
 def _take_agent_provenance(step_run: WorkflowStepRun, agent_run: AgentRun | None) -> None:
@@ -176,7 +200,55 @@ class WorkflowEngine:
             outcome = await self._execute(db, run, workflow, step, step_run)
         except TemplateError as exc:
             outcome = _fail(str(exc))
+        await self._propagate(db, run, step, step_run)
         await self._apply(db, run, workflow, definition, step, step_run, outcome)
+
+    # ------------------------------------------------------------- provenance
+    async def _propagate(
+        self, db: AsyncSession, run: WorkflowRun, step: Any, step_run: WorkflowStepRun
+    ) -> None:
+        """Transitive provenance (M8.6).
+
+        A step's content derives from what it observed itself (M8.5 capture) and
+        from every upstream value its templates consume: `steps.<id>.*` inherits
+        that step's latest earlier provenance, and `input.*` is the run's external
+        input. An agent step passes this on to its agent run, whose content was
+        produced from the rendered input. The workflow run is the union of its
+        input and all its steps. Unknown or truncated provenance anywhere upstream
+        makes every consumer truncated; nothing is ever reset to empty.
+        """
+        consumed = ProvenanceCollector()
+        for path in references(_templates(step)):
+            root, _, rest = path.partition(".")
+            if root == "input" and run.input:
+                consumed.add(provenance.external_input_ref())
+            elif root == "steps":
+                upstream = await self._latest_step_run(db, run, rest.split(".", 1)[0], step_run)
+                if upstream is not None:
+                    consumed.inherit(upstream.sources, upstream.sources_truncated)
+        inherited, inherited_truncated = consumed.snapshot()
+
+        if step_run.agent_run_id is not None:
+            agent_run = await db.get(AgentRun, step_run.agent_run_id)
+            if agent_run is not None:
+                _merge_into(agent_run, inherited, inherited_truncated)
+        _merge_into(step_run, inherited, inherited_truncated)
+        _merge_into(run, step_run.sources, step_run.sources_truncated)
+
+    @staticmethod
+    async def _latest_step_run(
+        db: AsyncSession, run: WorkflowRun, step_id: str, current: WorkflowStepRun
+    ) -> WorkflowStepRun | None:
+        """The attempt of `step_id` whose output is in the run context: the most
+        recent one before the current step."""
+        stmt = select(WorkflowStepRun).where(
+            WorkflowStepRun.run_id == run.id, WorkflowStepRun.step_id == step_id
+        )
+        if current.sequence is not None:
+            stmt = stmt.where(WorkflowStepRun.sequence < current.sequence)
+        return (
+            await db.execute(stmt.order_by(WorkflowStepRun.sequence.desc()).limit(1))
+        ).scalar_one_or_none()
 
     def _new_step_run(self, db: AsyncSession, run: WorkflowRun, step: Any) -> WorkflowStepRun:
         step_run = WorkflowStepRun(
