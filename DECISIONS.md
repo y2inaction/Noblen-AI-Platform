@@ -198,3 +198,224 @@ labelled untrusted — they can never modify permissions, tool authorization, or
 policy.
 **Consequences:** A consistent index and a clean prompt-injection boundary; changing the
 embedding model/dimension is an explicit, handled migration rather than a silent break.
+
+---
+
+## Noblen AI 3.0
+
+### ADR-0019 — Noblen AI 3.0 extends the Phase 1–4 platform; no rewrite
+**Status:** Accepted (3.0 M1)
+**Context:** 3.0 repositions Noblen as AI Workforce & Business Operating Systems.
+Phases 1–4 already provide auth, tenancy, RBAC, a model-agnostic gateway, a
+versioned agent engine with tools and approvals, and knowledge/RAG.
+**Decision:** Build 3.0 incrementally on that core. The remaining Phase 5–9 plan
+is re-sequenced into 3.0 milestones (see `PROJECT_ROADMAP.md`).
+**Consequences:** Working, tested code is preserved. The 3.0 gaps (traceability,
+escalation, permission ceilings, operations) are closed in place.
+
+### ADR-0020 — Every agent execution is a traced run
+**Status:** Accepted (3.0 M1)
+**Decision:** `AgentRun` + append-only `AgentRunStep` record every model call,
+tool call, approval and escalation, with tokens, latency and outcome, but **no
+prompt/response text** (consistent with `AI_LOG_PROMPTS`). Content stays in the
+conversation. A run's context starts at its own user message, so resumes are
+independent of the memory window.
+**Consequences:** AI-operations metrics are plain queries. Storage grows with
+activity, so retention policies will be needed.
+
+### ADR-0021 — Tool authorization is agent ∩ current human permission; risk is code-declared
+**Status:** Accepted (3.0 M1). Refines ADR-0015.
+**Decision:** A tool runs only if it is bound to the agent and enabled, **and** the
+initiating user's *current* role holds the handler's `required_permission`.
+`risk_level` lives on the handler (code), and HIGH always requires approval. On
+resume, everything is re-checked, and a non-ACTIVE agent stops the run. Approved
+tools run on behalf of the initiator.
+**Consequences:** Agents cannot escalate privilege, and catalogue edits cannot
+loosen risk. Revocations and pauses take effect immediately.
+
+### ADR-0022 — Exceptions escalate to humans instead of failing
+**Status:** Accepted (3.0 M1). Supersedes the 409 behaviour of ADR-0016.
+**Decision:** An `escalate_to_human` control tool is always offered to the model.
+Refusals, truncation and exhausted budgets end the run `ESCALATED` with a reason.
+Only provider outages fail a run (`FAILED`, persisted, translated HTTP error).
+**Consequences:** API clients must handle `status: "escalated"`. Operators get a
+queue of escalations in the operations overview.
+
+### ADR-0023 — AI Operator role; status-only agent control
+**Status:** Accepted (3.0 M1)
+**Decision:** Add `OPERATOR`: member rights plus approving actions, activating
+and pausing agents (`agent:operate`), and viewing runs, operations and usage. It
+cannot author or reconfigure agents. `SUPER_ADMIN` can only be granted by a
+platform admin.
+
+### ADR-0024 — Agent tools reach data through injected, scoped capabilities
+**Status:** Accepted (3.0 M2). Extends ADR-0015.
+**Decision:** Tools still never receive a DB session. Like `knowledge_search`,
+work items are exposed as an `AgentWorkspace` built by the runtime and bound to
+the run's organization, agent, run and initiator. Services validate that
+referenced people are active members of that organization.
+**Consequences:** New data-backed tools follow one pattern. Tenancy and
+attribution cannot be chosen by model arguments.
+
+### ADR-0025 — The database is the run queue
+**Status:** Accepted (3.0 M2). Supersedes the "synchronous only" part of ADR-0016.
+**Decision:** Background runs are `QUEUED` rows claimed by workers with
+`SELECT … FOR UPDATE SKIP LOCKED`. The worker is the backend image with a different
+command. No new broker is introduced (Redis stays for rate limiting and caching).
+**Consequences:** Durable, horizontally scalable execution with no new infrastructure.
+Throughput is bounded by polling (fine at current scale). Runs a crashed worker
+leaves `RUNNING` are handled by stale-run recovery (ADR-0033).
+
+### ADR-0026 — Reference agents are templates, not code
+**Status:** Accepted (3.0 M2)
+**Decision:** Executive AI and Customer AI are data (instructions, memory, tool
+bindings and policies) instantiated into ordinary agents. A template only lists
+tools that genuinely work, and planned capabilities are listed separately.
+**Consequences:** BusinessOS and IndustryOS packages can ship as template sets.
+Improving a template does not change existing agents: the organization cuts a
+new version.
+
+### ADR-0027 — Knowledge access is a predicate inside the query; agents read as their initiator
+**Status:** Accepted (3.0 M3). Extends ADR-0014.
+**Decision:** Knowledge-base and document ACLs (visibility plus user/role grants)
+compile to SQL predicates that every knowledge query adds to its `WHERE` clause,
+including semantic search before `ORDER BY … LIMIT`. Nothing is filtered after
+ranking. The reader is a `Principal` resolved from the database. For agents it is
+the user who started the run, intersected with the agent's attached bases.
+Admins hold `knowledge:read_all`.
+**Consequences:** Restricted content cannot leak through ranking, counts or
+top-k starvation. An agent can never read more than its initiator. Grants are
+per resource; group principals can be added to the same predicate later.
+
+### ADR-0028 — Tabular knowledge is typed JSON rows queried with a declarative spec
+**Status:** Accepted (3.0 M3)
+**Decision:** CSV/XLSX sheets are stored as tables with typed columns (`number` or
+`text`) and JSON rows, and queried through a small spec (filters, one aggregate,
+group-by, order, limit) compiled to SQL JSON-path expressions with bound values.
+No model- or user-written SQL is ever executed. The rows are also embedded as
+text for semantic search.
+**Consequences:** Exact counts and totals from spreadsheets, portable across
+PostgreSQL and SQLite, and governed by the same access rules. JSON rows are not
+indexed per column, so very large tables are bounded by `KNOWLEDGE_MAX_TABLE_ROWS`.
+Joins and external databases need a later design.
+
+### ADR-0029 — Long-term memory is scoped, with explicit write paths
+**Status:** Accepted (3.0 M4)
+**Decision:** User, agent and organizational memory share one tenant-scoped table
+with an explicit `scope`, a subject and provenance. Nothing is remembered
+implicitly: people write through the API (their own user memories, or agent and
+organization memories with `memory:manage`), and agents write only through tools
+bound to them. Those tools can only write about the run's initiator or for the
+agent itself. Shared agent memory needs approval by default. User memory is
+private to its person and the runs they start, including from admins. Agents in
+`PERSISTENT` mode get memories in their system prompt as labelled reference
+data; other modes do not. Recall is text matching for now.
+**Consequences:** Memory is governed like any other agent action (permission
+ceiling, approval, trace, audit) and cannot leak between people through the
+agent. Operators cannot inspect someone's private memories. Semantic recall and
+per-scope retention can be added without changing the model.
+
+### ADR-0030 — Workflows are versioned step lists executed on the DB-queue worker
+**Status:** Accepted (3.0 M5). Supersedes the Celery + beat plan for workflows.
+**Decision:** A workflow is a trigger plus a list of typed steps (`agent`, `tool`,
+`condition`, `approval`) in an immutable version. Runs are queued rows advanced by
+the existing worker, one committed step at a time. Agent steps are ordinary agent
+runs; tool steps use the same handlers and checks as agents. Values move between
+steps through dotted references only, with no template language and no expressions.
+Every run acts for one person (the manual starter or the activator), re-checked
+before each step.
+**Consequences:** Workflows inherit tracing, approvals, escalation, tenancy and
+authorization instead of re-implementing them, and need no new infrastructure.
+There are no parallel branches, sub-workflows or cron expressions yet. Schedules are
+polled, so their precision is the worker's poll interval.
+
+### ADR-0031 — Integrations are credential references behind a run-bound gateway
+**Status:** Accepted (3.0 M6)
+**Decision:** External services are per-organization connections whose secrets are
+encrypted at rest (Fernet with rotating keys, required in production) and are
+write-only. Tools never receive credentials: they name a connection, and an
+`IntegrationGateway` bound to the run decrypts the secret only for the call and
+audits external writes. Each provider speaks its real protocol (SMTP, HTTPS
+webhooks, CalDAV, the HubSpot REST API, MCP over Streamable HTTP) behind one SSRF
+guard. Tool risk levels are declared in code; outward-facing actions (email,
+webhooks) are HIGH and always need approval.
+**Consequences:** Adding a provider is a config/secret schema, a client and a few
+tools. OAuth providers (Google, Microsoft) need a token-refresh flow on top of this
+model and are not included. Hostname checks are exposed to DNS-rebinding races.
+
+### ADR-0032 — Imported MCP tools are tenant-owned and admin-governed
+**Status:** Accepted (3.0 M6)
+**Decision:** Tools discovered on a remote MCP server become organization-owned
+catalogue rows (`tools.organization_id`), invisible to other tenants. They start
+disabled, HIGH risk and approval-required. An administrator enables each one and
+declares its risk and policy, because a remote server's own description of its
+tools cannot be trusted. Execution reuses the agent runtime's binding, permission
+ceiling, approval and trace. Results are returned as untrusted data.
+**Consequences:** Any MCP server can extend an organization's agents without code,
+under the same controls as built-in tools. Tools removed remotely are disabled on
+the next sync. MCP tools are not yet available as workflow steps.
+
+### ADR-0033 — Interrupted runs are escalated, not blindly retried
+**Status:** Accepted (3.0 hardening). Completes ADR-0025.
+**Decision:** The worker periodically looks for agent and workflow runs that are
+`RUNNING` but whose row has not changed for `STALE_RUN_SECONDS` (default 15 minutes,
+far above any live run's budgets and timeouts). Such a run was interrupted. Agent
+runs are escalated to a person, with a trace step, notifications and an audit
+entry. Workflow runs are re-queued only when no step was in flight, or the
+in-flight step has no external effect (condition, approval request). Otherwise they
+are escalated. Claims use `FOR UPDATE SKIP LOCKED`.
+**Consequences:** No run is stuck forever, and recovery never sends an email twice
+or creates a duplicate task. The cost is human attention after a crash, and up to
+`STALE_RUN_SECONDS` of delay before recovery. Resuming agent runs exactly (per-tool
+idempotency keys) is left for later.
+
+### ADR-0034 — PostgreSQL Row-Level Security as a second tenant boundary
+**Status:** Proposed (security review, 2026-09). Not implemented.
+Details: [`docs/architecture/adr-0034-postgres-rls.md`](docs/architecture/adr-0034-postgres-rls.md).
+**Decision:** Enforce `organization_id` in PostgreSQL as well as in the application.
+The API and tenant work use a non-owner `noblen_app` role without `BYPASSRLS`. The
+tenant is set per transaction with `set_config(..., true)` from an `after_begin`
+session event. Policies fail closed when the setting is missing. Cross-tenant work
+(worker claims, schedules, recovery, purges, the webhook lookup) uses an explicit
+`system_session()` on a `BYPASSRLS` role that returns ids only. Migrations run as the
+owner. Intra-tenant rules stay in the application.
+**Consequences:** One missing filter can no longer leak another tenant's data. It
+requires new database roles and connection strings, a startup role check, and a
+PostgreSQL-only test suite. Rollout is staged: enable first, then `FORCE`.
+
+### ADR-0035 — Workflow and run content is visible to its participants
+**Status:** Accepted and implemented (participant rule; `app/rbac/visibility.py`,
+`tests/security/`). Widening through provenance waits for ADR-0037.
+Details: [`docs/architecture/adr-0035-workflow-output-authorization.md`](docs/architecture/adr-0035-workflow-output-authorization.md).
+**Decision:** Workflow and agent runs split metadata (organization-visible under
+`:view`) from content (`input`, `context`, step outputs, free-text reasons), which is
+visible only to the person the run acts for. Approvers see only the approval request
+they decide. This is enforced in the service layer with one predicate per resource.
+**Consequences:** It closes the leak where any VIEWER could read agent answers derived
+from another member's restricted knowledge or private memory via
+`GET /workflow-runs/{id}`. Operators keep metadata. The UI shows content as withheld.
+
+### ADR-0036 — One visibility model: Tenant, Role, Participant, Owner, Restricted, System
+**Status:** Proposed (security review, 2026-09).
+Details: [`docs/architecture/adr-0036-visibility-model.md`](docs/architecture/adr-0036-visibility-model.md).
+**Decision:** Every field of every resource has one of six nested levels. Permissions
+gate actions and resource types; they never widen rows (except the existing
+`knowledge:read_all`). Derived data inherits the narrowest level of its inputs unless
+it passes an explicit, authorized, audited publication sink. Agents and workflows act
+only as one person and never hold authority of their own.
+**Consequences:** Existing predicates (`tenant_scoped`, `require_permission`,
+`readable_by`, memory scopes, knowledge ACLs) map onto the levels. There are no new
+permission families and no policy engine.
+
+### ADR-0037 — Permission propagation through provenance references
+**Status:** Proposed (security review, 2026-09).
+Details: [`docs/architecture/adr-0037-permission-propagation-provenance.md`](docs/architecture/adr-0037-permission-propagation-provenance.md).
+**Decision:** Runs record a bounded list of source references: knowledge documents and
+tables, memories, integration connections, upstream steps, external input. They also
+record the acting role. References are captured at the existing choke points, never as
+copied content. A non-participant sees run content only if they can read every source,
+checked in bulk with the existing predicates. A missing or truncated source list fails
+closed.
+**Consequences:** Visibility can safely widen beyond participants, and publications
+(tasks, shared memory, outbound sends) become attributable to their sources. The cost
+is four columns and one bulk check per non-participant content read.

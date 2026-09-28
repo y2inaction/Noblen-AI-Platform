@@ -19,7 +19,14 @@ from app.ai.gateway import AIGateway
 from app.ai.types import EmbeddingRequest
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.models.knowledge import DocumentChunk, DocumentEmbedding, KnowledgeDocument
+from app.knowledge.access import Principal, document_readable, knowledge_base_readable
+from app.models.enums import KnowledgeBaseStatus
+from app.models.knowledge import (
+    DocumentChunk,
+    DocumentEmbedding,
+    KnowledgeBase,
+    KnowledgeDocument,
+)
 from app.services import ai_usage_service
 
 logger = get_logger("knowledge.retrieval")
@@ -70,7 +77,14 @@ class KnowledgeRetriever:
         top_k: int | None = None,
         similarity_threshold: float | None = None,
         user_id: uuid.UUID | None = None,
+        principal: Principal | None = None,
     ) -> list[SearchResult]:
+        """Nearest chunks for `query`.
+
+        With a `principal`, knowledge-base and document access rules are applied
+        in the SQL WHERE clause, before ordering and LIMIT, so unreadable content
+        can never occupy a result slot or be ranked.
+        """
         from pgvector.sqlalchemy import Vector  # pg-only; retrieval runs on PostgreSQL
 
         top_k = min(top_k or settings.KNOWLEDGE_DEFAULT_TOP_K, settings.KNOWLEDGE_MAX_TOP_K)
@@ -113,13 +127,18 @@ class KnowledgeRetriever:
             )
             .join(DocumentEmbedding, DocumentEmbedding.chunk_id == DocumentChunk.id)
             .join(KnowledgeDocument, KnowledgeDocument.id == DocumentChunk.document_id)
+            .join(KnowledgeBase, KnowledgeBase.id == DocumentChunk.knowledge_base_id)
             # MANDATORY tenant scope — never retrieve another org's vectors.
             .where(DocumentEmbedding.organization_id == organization_id)
+            # Archived/paused knowledge bases are not searchable.
+            .where(KnowledgeBase.status == KnowledgeBaseStatus.ACTIVE.value)
             .order_by(distance)
             .limit(top_k)
         )
         if knowledge_base_ids:
             stmt = stmt.where(DocumentEmbedding.knowledge_base_id.in_(knowledge_base_ids))
+        if principal is not None:
+            stmt = stmt.where(knowledge_base_readable(principal), document_readable(principal))
 
         rows = (await db.execute(stmt)).all()
         results: list[SearchResult] = []

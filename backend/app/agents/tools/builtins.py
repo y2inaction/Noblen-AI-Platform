@@ -11,10 +11,12 @@ from typing import Any
 
 from app.agents.tools.base import ToolContext, ToolHandler, ToolResult
 from app.models.enums import ToolPermissionMode
+from app.rbac.permissions import Permission
 
 
 class GetCurrentTimeTool(ToolHandler):
     handler_identifier = "get_current_time"
+    available_in_workflows = True
     name = "get_current_time"
     description = "Return the current UTC time (ISO 8601) and the organization timezone."
     tool_type = "system"
@@ -34,12 +36,14 @@ class GetCurrentTimeTool(ToolHandler):
 
 class GetOrganizationSettingsTool(ToolHandler):
     handler_identifier = "get_organization_settings"
+    available_in_workflows = True
     name = "get_organization_settings"
     description = "Return the current organization's non-sensitive settings."
     tool_type = "system"
     input_schema = {"type": "object", "properties": {}, "additionalProperties": False}
     output_schema = {"type": "object"}
     default_permission_mode = ToolPermissionMode.AUTO.value
+    required_permission = Permission.ORG_VIEW
 
     async def execute(self, context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         # Only the safe subset placed on the context — never secrets.
@@ -85,6 +89,7 @@ class SearchKnowledgeTool(ToolHandler):
         "information relevant to a query. Returns matching passages with citations."
     )
     tool_type = "knowledge"
+    required_permission = Permission.KNOWLEDGE_SEARCH
     input_schema = {
         "type": "object",
         "properties": {
@@ -108,9 +113,80 @@ class SearchKnowledgeTool(ToolHandler):
         return ToolResult.success(**result)
 
 
-BUILTIN_TOOLS: list[ToolHandler] = [
-    GetCurrentTimeTool(),
-    GetOrganizationSettingsTool(),
-    EchoTool(),
-    SearchKnowledgeTool(),
-]
+class ListDataTablesTool(ToolHandler):
+    """List spreadsheet tables (from CSV/XLSX knowledge) the agent may query."""
+
+    handler_identifier = "list_data_tables"
+    name = "list_data_tables"
+    description = (
+        "List the data tables (from spreadsheets in this agent's knowledge bases) with "
+        "their columns and types. Use before query_data_table."
+    )
+    tool_type = "knowledge"
+    input_schema = {"type": "object", "properties": {}, "additionalProperties": False}
+    output_schema = {"type": "object"}
+    default_permission_mode = ToolPermissionMode.AUTO.value
+    required_permission = Permission.KNOWLEDGE_SEARCH
+
+    async def execute(self, context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        if context.knowledge_tables is None:
+            return ToolResult.failure("Data tables are not available for this agent.")
+        return ToolResult.success(**await context.knowledge_tables.list())
+
+
+class QueryDataTableTool(ToolHandler):
+    """Exact answers from tabular knowledge: filters, count/sum/avg/min/max, group-by."""
+
+    handler_identifier = "query_data_table"
+    name = "query_data_table"
+    description = (
+        "Query a data table exactly (for counts, totals, averages, rankings and lookups). "
+        "filters: [{column, op: eq|ne|gt|gte|lt|lte|contains|is_null|not_null, value}]; "
+        "aggregate: {op: count|sum|avg|min|max, column}; group_by: column; "
+        "order_by: {column, descending}; columns: [...]; limit."
+    )
+    tool_type = "knowledge"
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "table_id": {"type": "string"},
+            "columns": {"type": "array", "items": {"type": "string"}},
+            "filters": {"type": "array", "items": {"type": "object"}},
+            "aggregate": {"type": "object"},
+            "group_by": {"type": "string"},
+            "order_by": {"type": "object"},
+            "limit": {"type": "integer"},
+        },
+        "required": ["table_id"],
+        "additionalProperties": False,
+    }
+    output_schema = {"type": "object"}
+    default_permission_mode = ToolPermissionMode.AUTO.value
+    required_permission = Permission.KNOWLEDGE_SEARCH
+
+    async def execute(self, context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        if context.knowledge_tables is None:
+            return ToolResult.failure("Data tables are not available for this agent.")
+        spec = {k: v for k, v in arguments.items() if k != "table_id"}
+        return await context.knowledge_tables.query(str(arguments["table_id"]), spec)
+
+
+def _all_builtin_tools() -> list[ToolHandler]:
+    from app.agents.tools.memory_tools import MEMORY_TOOLS
+    from app.agents.tools.work_tools import WORK_TOOLS
+    from app.integrations.tools import INTEGRATION_TOOLS
+
+    return [
+        GetCurrentTimeTool(),
+        GetOrganizationSettingsTool(),
+        EchoTool(),
+        SearchKnowledgeTool(),
+        ListDataTablesTool(),
+        QueryDataTableTool(),
+        *WORK_TOOLS,
+        *MEMORY_TOOLS,
+        *INTEGRATION_TOOLS,
+    ]
+
+
+BUILTIN_TOOLS: list[ToolHandler] = _all_builtin_tools()

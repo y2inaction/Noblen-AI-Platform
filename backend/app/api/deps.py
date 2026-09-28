@@ -24,6 +24,7 @@ from app.models.enums import MembershipStatus
 from app.models.membership import OrganizationMember
 from app.models.user import User
 from app.rbac.permissions import role_has_permission
+from app.rbac.visibility import Viewer
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -35,6 +36,15 @@ class TenantContext:
     user: User
     organization_id: uuid.UUID
     role_name: str
+
+    @property
+    def viewer(self) -> Viewer:
+        """Who a response is for, for content-visibility rules (ADR-0035)."""
+        return Viewer(
+            user_id=self.user.id,
+            role_name=self.role_name,
+            is_superuser=user_is_platform_superuser(self.user),
+        )
 
 
 async def get_current_user(

@@ -29,7 +29,7 @@ suite is a permanent gate proving User A cannot read Org B's data.
 
 Agents & versions & tools & memory (Phase 3); knowledge bases, documents, chunks,
 embeddings (Phase 4); conversations & messages (Phase 3); contacts, leads, lead
-activities (Phase 6); workflows, versions, nodes, runs, run logs (Phase 5); tasks,
+activities (Phase 6); workflows, workflow versions, runs and step runs (implemented in 3.0 M5); tasks,
 notifications; integrations, integration credentials, webhooks (Phase 7);
 subscriptions, plans, payments, usage records (Phase 7); system settings; AI
 provider/model configuration (Phase 2).

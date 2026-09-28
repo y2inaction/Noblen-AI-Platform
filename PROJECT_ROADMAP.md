@@ -8,6 +8,56 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 
 ---
 
+## Noblen AI 3.0 — milestones (supersede Phases 5–9 below)
+
+Noblen AI is becoming **AI Workforce & Business Operating Systems**. Phases 0–4 are
+the foundation and remain valid. The work after Phase 4 is re-sequenced into the
+milestones below; see [`docs/architecture/overview.md`](docs/architecture/overview.md).
+Phases 10–11 (hardening, deployment) still apply.
+
+- ✅ **M1: Controlled autonomy & AI operations.** Run traces (`agent_runs`,
+  `agent_run_steps`); escalation (`escalate_to_human`, and budgets, refusal and
+  truncation escalate); tool risk levels and the initiator permission ceiling;
+  approval modify, notes, correct multi-call and no-memory resume, and a kill switch;
+  gateway fallback chain; AI Operator role; `/runs` and `/operations/overview`;
+  SUPER_ADMIN grant fix.
+- ✅ **M2: First AI Workforce + execution hardening.** Tasks and notifications
+  (+ APIs); workforce tools (`create_task`, `list_tasks`, `update_task`,
+  `notify_member`); Executive AI and Customer AI templates; background execution
+  on a DB-queue worker; approval and escalation alerts; separation of duties.
+  *Carried forward:* provider-native replay. (Stale-run recovery landed in Phase 10.)
+- ✅ **M3: Knowledge permissions + structured retrieval.** Knowledge-base and
+  document visibility with user/role grants, enforced in SQL before ranking;
+  agents read as their initiator; archived bases unsearchable; CSV/XLSX tables
+  with a declarative query API and agent tools (`list_data_tables`,
+  `query_data_table`).
+- ✅ **M4: Memory.** Scoped user, agent and organizational memory (`memories`) with
+  explicit write paths: owner and manager APIs, and the agent tools `save_user_memory`,
+  `save_agent_memory` (approval by default), `recall_memories` and `forget_user_memory`.
+  User memory is private to its person; secrets are rejected; per-organization
+  retention with worker purge; `PERSISTENT` agents load memory into context.
+- ✅ **M5: Workflow engine.** Versioned workflows (`/workflows`, `/workflow-runs`) with
+  manual, schedule (`every_minutes`, `daily_at` in org timezone) and task-event
+  triggers; agent, tool, condition and approval steps; `{{ }}` value references (no
+  code); retries with backoff; `fail`/`continue`/`escalate`; run-as authority
+  re-checked per step; kill switch, step budget and event-depth guard; executed by
+  the existing DB-queue worker.
+- ✅ **M6: Integrations.** Encrypted, per-organization connections (Fernet, key
+  rotation, write-only secrets) and an SSRF guard; `send_email` (SMTP),
+  `call_webhook` (signed), CalDAV calendar and HubSpot CRM tools with declared risk
+  levels; remote MCP adapter (Streamable HTTP) importing organization-owned tools
+  that admins enable and risk-rate; webhook triggers for workflows. *Not yet:*
+  OAuth connections (Google/Microsoft), messaging channels, Paystack.
+- ✅ **M7: Operating-environment UI.** Next.js UI over the API: dashboard (live
+  operations overview), workforce (agents, templates, run a task), approvals inbox
+  (agent actions: approve, reject, or edit arguments and approve; workflow
+  decisions), agent and workflow run traces, workflows (create from JSON,
+  activate/pause, run), tasks, integrations (test, MCP tool governance),
+  notifications, and an organization switcher. Permission-aware via
+  `GET /organizations/current/access`. Browser smoke test in `frontend/e2e/`.
+
+---
+
 ## Phase 0 — Discovery ✅
 - [x] Inspect repository & git status (empty repo, fresh branch)
 - [x] Check runtime versions (Python 3.11, Node 22, Docker 29, Postgres 16)
@@ -77,18 +127,20 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 - [x] CI runs the Knowledge/RAG suite against real PostgreSQL + pgvector
 - [x] `docs/knowledge.md` + documentation updates
 
-## Phase 5 — Workflow Engine ⬜
+## Phase 5 — Workflow Engine (→ 3.0 M5)
 - [ ] Workflow models, triggers, nodes, conditions, execution engine, logs, scheduler
 
-## Phase 6 — Commercial Agents ⬜
+## Phase 6 — Commercial Agents (→ 3.0 M2 AI Workforce)
 - [ ] Customer Service, Sales, Content, Executive Assistant, Operations agents
 
-## Phase 7 — Integrations ⬜
+## Phase 7 — Integrations (→ 3.0 M6)
 - [ ] Email, Google Calendar, WhatsApp, Paystack, webhooks, CRM (interfaces + mocks first)
 
-## Phase 8 — Client Dashboard ⬜
-- [ ] Agents, conversations, leads, content, workflows, knowledge, tasks, analytics,
-      integrations, billing, settings
+## Phase 8 — Client Dashboard (→ 3.0 M7)
+- [x] Dashboard, agents (workforce), runs, approvals, workflows, tasks, integrations,
+      notifications (3.0 M7)
+- [ ] Conversations, leads, content, knowledge, analytics, billing, settings,
+      agent/connection authoring forms
 
 ## Phase 9 — Admin ⬜
 - [ ] Organizations, users, usage, AI costs, agents, executions, subscriptions,

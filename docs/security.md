@@ -18,7 +18,9 @@ Security is a first-class concern from Phase 1. See also spec §28 and
 ## Authorization
 - **RBAC** enforced server-side via `require_permission(...)`. The client cannot
   self-authorize; every role and membership is validated against the database.
-- Roles: `SUPER_ADMIN`, `ADMIN`, `MANAGER`, `MEMBER`, `VIEWER` (extensible).
+- Roles: `SUPER_ADMIN`, `ADMIN`, `MANAGER`, `OPERATOR`, `MEMBER`, `VIEWER` (extensible).
+- Knowledge access control (3.0 M3): restricted knowledge bases and documents,
+  enforced in SQL. See [`architecture/knowledge.md`](architecture/knowledge.md).
 
 ## Tenant isolation
 - Mandatory `organization_id` on every tenant-owned row; queries scoped via

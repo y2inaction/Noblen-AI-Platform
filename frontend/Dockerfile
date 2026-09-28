@@ -9,7 +9,11 @@ FROM node:22-slim AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-ENV NEXT_TELEMETRY_DISABLED=1
+# NEXT_PUBLIC_* values are inlined into the browser bundle (and the CSP's
+# allowed API origin, see next.config.mjs) at build time, so they are build args.
+ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL} \
+    NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 FROM node:22-slim AS runner

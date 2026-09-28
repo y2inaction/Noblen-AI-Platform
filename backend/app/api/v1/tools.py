@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents import registry as agent_registry
@@ -13,6 +13,7 @@ from app.agents.tools.registry import tool_registry
 from app.api.deps import TenantContext, require_permission
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.db.session import get_db
+from app.integrations.service import MCP_HANDLER
 from app.models.enums import ToolPermissionMode
 from app.models.tool import AgentTool, Tool
 from app.rbac.permissions import Permission
@@ -23,16 +24,26 @@ router = APIRouter(tags=["tools"])
 _VALID_MODES = {m.value for m in ToolPermissionMode}
 
 
+def _visible(ctx: TenantContext) -> ColumnElement[bool]:
+    """Global tools plus the caller organization's own (e.g. imported MCP) tools."""
+    return or_(Tool.organization_id.is_(None), Tool.organization_id == ctx.organization_id)
+
+
 @router.get("/tools", response_model=ToolListOut)
 async def list_tools(
-    _ctx: TenantContext = Depends(require_permission(Permission.TOOL_VIEW)),
+    ctx: TenantContext = Depends(require_permission(Permission.TOOL_VIEW)),
     db: AsyncSession = Depends(get_db),
     limit: int = Query(default=100, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> ToolListOut:
-    total = (await db.execute(select(func.count(Tool.id)))).scalar_one()
+    visible = _visible(ctx)
+    total = (await db.execute(select(func.count(Tool.id)).where(visible))).scalar_one()
     rows = (
-        (await db.execute(select(Tool).order_by(Tool.name).limit(limit).offset(offset)))
+        (
+            await db.execute(
+                select(Tool).where(visible).order_by(Tool.name).limit(limit).offset(offset)
+            )
+        )
         .scalars()
         .all()
     )
@@ -42,10 +53,12 @@ async def list_tools(
 @router.get("/tools/{tool_id}", response_model=ToolOut)
 async def get_tool(
     tool_id: uuid.UUID,
-    _ctx: TenantContext = Depends(require_permission(Permission.TOOL_VIEW)),
+    ctx: TenantContext = Depends(require_permission(Permission.TOOL_VIEW)),
     db: AsyncSession = Depends(get_db),
 ) -> ToolOut:
-    tool = (await db.execute(select(Tool).where(Tool.id == tool_id))).scalar_one_or_none()
+    tool = (
+        await db.execute(select(Tool).where(Tool.id == tool_id, _visible(ctx)))
+    ).scalar_one_or_none()
     if tool is None:
         raise NotFoundError("Tool not found.")
     return ToolOut.model_validate(tool)
@@ -72,10 +85,13 @@ async def attach_agent_tool(
     db: AsyncSession = Depends(get_db),
 ) -> AgentToolOut:
     await agent_registry.get_agent(db, ctx.organization_id, agent_id)  # tenant check
-    tool = (await db.execute(select(Tool).where(Tool.id == body.tool_id))).scalar_one_or_none()
+    tool = (
+        await db.execute(select(Tool).where(Tool.id == body.tool_id, _visible(ctx)))
+    ).scalar_one_or_none()
     if tool is None:
         raise NotFoundError("Tool not found.")
-    if tool_registry.get_by_identifier(tool.handler_identifier) is None:
+    imported = tool.organization_id is not None and tool.handler_identifier == MCP_HANDLER
+    if not imported and tool_registry.get_by_identifier(tool.handler_identifier) is None:
         raise ValidationError("Tool has no registered handler and cannot be attached.")
     if body.permission_mode is not None and body.permission_mode not in _VALID_MODES:
         raise ValidationError(f"Unknown permission_mode '{body.permission_mode}'.")

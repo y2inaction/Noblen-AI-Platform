@@ -78,6 +78,10 @@ def _translate_ai_error(err: AIError) -> AppError:
     return AppError("An unexpected AI error occurred.", status_code=502, error_code="ai_error")
 
 
+# Public name for other routers that call the gateway (agent runs, approvals).
+translate_ai_error = _translate_ai_error
+
+
 def _validate_provider(provider: str | None, allowed: set[str]) -> None:
     if provider is not None and provider.lower() not in allowed:
         raise ValidationError(

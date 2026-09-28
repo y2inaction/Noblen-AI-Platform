@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents import conversations as conversation_service
 from app.agents import registry
 from app.agents.runtime import AgentRuntime, get_agent_runtime
+from app.ai.errors import AIError
 from app.api.deps import TenantContext, require_permission
+from app.api.v1.ai import translate_ai_error
 from app.db.session import get_db
 from app.models.enums import AgentStatus
 from app.rbac.permissions import Permission
@@ -111,7 +113,7 @@ async def archive_agent(
 @router.post("/{agent_id}/activate", response_model=AgentOut)
 async def activate_agent(
     agent_id: uuid.UUID,
-    ctx: TenantContext = Depends(require_permission(Permission.AGENT_UPDATE)),
+    ctx: TenantContext = Depends(require_permission(Permission.AGENT_OPERATE)),
     db: AsyncSession = Depends(get_db),
 ) -> AgentOut:
     agent = await registry.set_status(db, ctx.organization_id, agent_id, AgentStatus.ACTIVE.value)
@@ -123,7 +125,7 @@ async def activate_agent(
 @router.post("/{agent_id}/pause", response_model=AgentOut)
 async def pause_agent(
     agent_id: uuid.UUID,
-    ctx: TenantContext = Depends(require_permission(Permission.AGENT_UPDATE)),
+    ctx: TenantContext = Depends(require_permission(Permission.AGENT_OPERATE)),
     db: AsyncSession = Depends(get_db),
 ) -> AgentOut:
     agent = await registry.set_status(db, ctx.organization_id, agent_id, AgentStatus.PAUSED.value)
@@ -203,6 +205,7 @@ async def activate_version(
 async def execute_agent(
     agent_id: uuid.UUID,
     body: ExecuteRequest,
+    response: Response,
     ctx: TenantContext = Depends(require_permission(Permission.AGENT_RUN)),
     runtime: AgentRuntime = Depends(get_agent_runtime),
     db: AsyncSession = Depends(get_db),
@@ -213,18 +216,30 @@ async def execute_agent(
         )
         conversation_id = conversation.id
     else:
+        # Continuing a conversation loads its history into the agent's context, so
+        # only its participants may do it.
+        await conversation_service.get_conversation_for(
+            db, ctx.organization_id, body.conversation_id, ctx.user.id
+        )
         conversation_id = body.conversation_id
 
-    result = await runtime.execute(
-        db,
-        organization_id=ctx.organization_id,
-        user_id=ctx.user.id,
-        agent_id=agent_id,
-        conversation_id=conversation_id,
-        input_message=body.message,
-        version_id=body.version_id,
-    )
+    try:
+        result = await runtime.execute(
+            db,
+            organization_id=ctx.organization_id,
+            user_id=ctx.user.id,
+            agent_id=agent_id,
+            conversation_id=conversation_id,
+            input_message=body.message,
+            version_id=body.version_id,
+            background=body.background,
+        )
+    except AIError as err:
+        # The runtime has already recorded the run as FAILED.
+        raise translate_ai_error(err) from err
     await db.commit()
+    if result.status == "queued":
+        response.status_code = status.HTTP_202_ACCEPTED
     return ExecutionResponse(
         status=result.status,
         conversation_id=result.conversation_id,
@@ -234,4 +249,6 @@ async def execute_agent(
         approval_id=result.approval_id,
         tool_name=result.tool_name,
         usage=result.usage,
+        run_id=result.run_id,
+        escalation_reason=result.escalation_reason,
     )

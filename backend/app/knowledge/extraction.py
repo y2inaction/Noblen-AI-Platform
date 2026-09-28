@@ -1,6 +1,7 @@
 """Document extraction: bytes → normalized text + metadata.
 
-Supported in Phase 4: TXT, MD, PDF (pypdf), DOCX (python-docx). Unsupported types
+Supported: TXT, MD, PDF (pypdf), DOCX (python-docx), and (M3) CSV / XLSX (openpyxl),
+which also yield typed tables for structured queries. Unsupported types
 raise a clear validation error. Uploaded files are treated strictly as data — never
 executed.
 """
@@ -12,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.knowledge.errors import DocumentExtractionError, UnsupportedDocumentType
+from app.knowledge.tabular import ExtractedTable, parse_csv, parse_xlsx, render_text
 
 # Extension → canonical kind
 _EXT_KIND = {
@@ -21,6 +23,8 @@ _EXT_KIND = {
     "markdown": "markdown",
     "pdf": "pdf",
     "docx": "docx",
+    "csv": "csv",
+    "xlsx": "xlsx",
 }
 # MIME → canonical kind (used as a secondary signal)
 _MIME_KIND = {
@@ -28,6 +32,8 @@ _MIME_KIND = {
     "text/markdown": "markdown",
     "application/pdf": "pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "text/csv": "csv",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
 }
 
 
@@ -36,6 +42,8 @@ class ExtractedDocument:
     text: str
     title: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Structured tables for CSV/XLSX sources (queried exactly, not by similarity).
+    tables: list[ExtractedTable] = field(default_factory=list)
 
 
 def _detect_kind(*, filename: str | None, mime_type: str | None) -> str | None:
@@ -87,7 +95,7 @@ def extract(
     if kind is None:
         raise UnsupportedDocumentType(
             f"Unsupported document type (filename={filename!r}, mime={mime_type!r}). "
-            "Supported: TXT, MD, PDF, DOCX."
+            "Supported: TXT, MD, PDF, DOCX, CSV, XLSX."
         )
 
     title = filename.rsplit(".", 1)[0] if filename else None
@@ -99,4 +107,19 @@ def extract(
     if kind == "docx":
         text, meta = _extract_docx(data)
         return ExtractedDocument(text=text, title=title, metadata={"kind": kind, **meta})
+    if kind in ("csv", "xlsx"):
+        tables = parse_csv(data, title or "Sheet1") if kind == "csv" else parse_xlsx(data)
+        if not tables:
+            raise DocumentExtractionError("The spreadsheet has no rows.")
+        return ExtractedDocument(
+            text=render_text(tables),
+            title=title,
+            metadata={
+                "kind": kind,
+                "tables": [
+                    {"name": t.name, "rows": len(t.rows), "truncated": t.truncated} for t in tables
+                ],
+            },
+            tables=tables,
+        )
     raise UnsupportedDocumentType(f"Unsupported document kind '{kind}'.")

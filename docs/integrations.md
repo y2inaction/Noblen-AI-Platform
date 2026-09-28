@@ -1,4 +1,11 @@
-# Integrations (design — implemented from Phase 7)
+# Integrations (original design)
+
+> **Implemented in Noblen AI 3.0 M6:** encrypted per-organization connections, SMTP
+> email, outbound webhooks, CalDAV calendars, HubSpot CRM, a remote MCP adapter and
+> inbound workflow webhooks. See [`architecture/integrations.md`](architecture/integrations.md).
+> Not implemented yet: WhatsApp and other channels, Paystack billing, and OAuth-based
+> Google/Microsoft connections. The `GOOGLE_*`, `WHATSAPP_*` and `PAYSTACK_*` variables
+> below are placeholders for that work.
 
 Integrations sit behind interfaces so providers can be added without touching
 business logic. **No fake integrations**: where credentials are unavailable, we
@@ -19,8 +26,9 @@ Initial: `WEB`, `API`. Prepared for `WHATSAPP`, `EMAIL`, `INSTAGRAM`, `FACEBOOK`
 | WhatsApp Cloud   | `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN` |
 | Email (SMTP)     | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL` |
 
-## Data model (planned)
-`integrations`, `integration_credentials` (encrypted at rest), `webhooks`.
+## Data model
+Implemented as `integration_connections` (secrets encrypted at rest) and
+`integration_tools` (imported MCP tools); inbound webhooks are a workflow trigger.
 
 ## Paystack (billing) scope
 Customer creation, subscription, payment verification, webhook handling, and

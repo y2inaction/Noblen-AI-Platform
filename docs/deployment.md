@@ -28,6 +28,12 @@ cp .env.example .env         # then fill in real secrets
 backend health check. Migrations run automatically at container start
 (`backend/docker/entrypoint.sh`) when `DATABASE_URL` points at PostgreSQL.
 
+The `worker` service runs `python -m app.agents.worker` from the backend image
+to execute background agent runs. It sets `SKIP_MIGRATIONS=true`, starts only
+after the backend is healthy (so migrations are applied), and can be scaled
+horizontally (`docker compose up -d --scale worker=3`), because runs are claimed
+with `FOR UPDATE SKIP LOCKED`.
+
 ## HTTPS
 Mount certificates into `infra/nginx/certs` and add a TLS `server` block (443) that
 redirects 80 → 443. Automate issuance/renewal with Certbot/Let's Encrypt.
@@ -38,6 +44,20 @@ redirects 80 → 443. Automate issuance/renewal with Certbot/Let's Encrypt.
 ```
 Restore instructions are printed by the script. Schedule via cron and store backups
 off-box. Configurable data-retention policies are planned (spec §43).
+
+## Frontend API URL (M7)
+`NEXT_PUBLIC_API_BASE_URL` is baked into the frontend image at build time: it goes
+into the browser bundle and into the Content-Security-Policy's `connect-src`. Set it
+before `docker compose build` (Compose passes it as a build argument), and rebuild
+the frontend image when it changes.
+
+## Integration secrets (M6)
+Set `INTEGRATIONS_ENCRYPTION_KEYS` in production: one or more Fernet keys, newest
+first. Generate one with
+`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
+To rotate, put the new key first and keep the old ones until every connection has
+been re-saved. Without a key, creating or using connections fails in production.
+Keep `INTEGRATIONS_ALLOW_PRIVATE_NETWORKS=false` outside local development.
 
 ## Production compose
 ```bash

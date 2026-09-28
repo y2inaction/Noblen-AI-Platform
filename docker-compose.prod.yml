@@ -28,6 +28,12 @@ services:
       ENVIRONMENT: production
       DEBUG: "false"
 
+  worker:
+    restart: always
+    environment:
+      ENVIRONMENT: production
+      DEBUG: "false"
+
   frontend:
     restart: always
     ports: []

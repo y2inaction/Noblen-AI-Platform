@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     AI_DEFAULT_EMBEDDING_PROVIDER: str = "openai"
     AI_DEFAULT_EMBEDDING_MODEL: str = "text-embedding-3-small"
 
+    # Platform-wide "provider:model" fallbacks, tried after a request's own
+    # fallbacks (comma-separated), e.g. "openai:gpt-4o,anthropic:claude-haiku-4-5".
+    AI_FALLBACK_MODELS: list[str] = Field(default_factory=list)
+
     # Resilience.
     AI_REQUEST_TIMEOUT_SECONDS: float = 60.0
     AI_MAX_RETRIES: int = 2
@@ -87,6 +91,42 @@ class Settings(BaseSettings):
     # Configuration/input size limits.
     AGENT_MAX_SYSTEM_INSTRUCTIONS_CHARS: int = 20000
     AGENT_MAX_INPUT_CHARS: int = 20000
+    # Background worker (python -m app.agents.worker): idle poll interval.
+    AGENT_WORKER_POLL_SECONDS: float = 2.0
+
+    # ---- Long-term memory (Noblen AI 3.0, M4) ----
+    MEMORY_MAX_CHARS: int = 1000  # per memory
+    MEMORY_MAX_PER_SUBJECT: int = 200  # per person / agent / organization
+    # How many memories a PERSISTENT agent gets in its context, per scope.
+    MEMORY_CONTEXT_MAX_ITEMS: int = 20
+    # How often the worker deletes memories past their organization's retention.
+    MEMORY_PURGE_INTERVAL_SECONDS: float = 3600.0
+
+    # ---- Workflow engine (Noblen AI 3.0, M5) ----
+    WORKFLOW_MAX_STEPS: int = 50  # steps in one definition
+    WORKFLOW_MAX_STEPS_PER_RUN: int = 100  # executed steps per run (bounds loops)
+    WORKFLOW_MAX_EVENT_DEPTH: int = 3  # workflow → event → workflow chains
+    WORKFLOW_MIN_INTERVAL_MINUTES: int = 5  # shortest schedule
+
+    # ---- Run recovery (hardening) ----
+    # A RUNNING agent or workflow run whose row has not changed for this long is
+    # considered interrupted (worker or server died). Runtime budgets and
+    # provider/integration timeouts keep live runs far below this.
+    STALE_RUN_SECONDS: int = 900
+    STALE_RUN_CHECK_INTERVAL_SECONDS: float = 60.0
+
+    # ---- Integrations (Noblen AI 3.0, M6) ----
+    # Fernet keys (comma-separated, newest first) that encrypt integration secrets.
+    # Required in production. Outside production a key is derived from JWT_SECRET.
+    INTEGRATIONS_ENCRYPTION_KEYS: list[str] = Field(default_factory=list)
+    INTEGRATIONS_HTTP_TIMEOUT_SECONDS: float = 15.0
+    INTEGRATIONS_MAX_RESPONSE_BYTES: int = 1_000_000
+    # Outbound connections to private/loopback/link-local addresses are blocked
+    # (SSRF defence) unless this is on — for local development only.
+    INTEGRATIONS_ALLOW_PRIVATE_NETWORKS: bool = False
+    HUBSPOT_API_BASE: str = "https://api.hubapi.com"
+    # Inbound webhook bodies (workflow webhook triggers).
+    WEBHOOK_MAX_BODY_BYTES: int = 65_536
 
     # ---- Knowledge + RAG (Phase 4) ----
     # Embedding model config. The vector column dimension is fixed platform-wide
@@ -104,6 +144,10 @@ class Settings(BaseSettings):
     # Retrieval.
     KNOWLEDGE_DEFAULT_TOP_K: int = 5
     KNOWLEDGE_MAX_TOP_K: int = 20
+    # Tabular knowledge (CSV/XLSX → queryable tables, M3).
+    KNOWLEDGE_MAX_TABLE_ROWS: int = 50_000
+    KNOWLEDGE_MAX_TABLE_COLUMNS: int = 200
+    KNOWLEDGE_MAX_QUERY_ROWS: int = 200
     # Minimum cosine similarity (0..1) for a chunk to be returned.
     KNOWLEDGE_DEFAULT_SIMILARITY_THRESHOLD: float = 0.0
     # Local document storage root (dev/test); swap for object storage in prod.
@@ -116,7 +160,9 @@ class Settings(BaseSettings):
     DEFAULT_TIMEZONE: str = "Africa/Lagos"
     DEFAULT_LOCALE: str = "en"
 
-    @field_validator("BACKEND_CORS_ORIGINS", mode="before")
+    @field_validator(
+        "BACKEND_CORS_ORIGINS", "AI_FALLBACK_MODELS", "INTEGRATIONS_ENCRYPTION_KEYS", mode="before"
+    )
     @classmethod
     def _split_cors(cls, value: object) -> object:
         if isinstance(value, str):

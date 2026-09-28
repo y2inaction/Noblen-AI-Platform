@@ -37,6 +37,12 @@ class Permission:
     AGENT_RUN = "agent:run"  # execute
     AGENT_MANAGE_VERSIONS = "agent:manage_versions"
     AGENT_APPROVE_ACTIONS = "agent:approve_actions"
+    # Change an agent's operating state (activate/pause) without editing its config.
+    AGENT_OPERATE = "agent:operate"
+
+    # AI Operations (Noblen AI 3.0): run traces and workforce metrics
+    RUN_VIEW = "run:view"
+    OPERATIONS_VIEW = "operations:view"
 
     # Conversations (Phase 3)
     CONVERSATION_CREATE = "conversation:create"
@@ -65,10 +71,24 @@ class Permission:
     KNOWLEDGE_INGEST = "knowledge:ingest"
     KNOWLEDGE_SEARCH = "knowledge:search"
     KNOWLEDGE_MANAGE_SOURCES = "knowledge:manage_sources"
+    # M3: manage who can read a knowledge base/document; read everything (admins).
+    KNOWLEDGE_MANAGE_ACCESS = "knowledge:manage_access"
+    KNOWLEDGE_READ_ALL = "knowledge:read_all"
     WORKFLOW_VIEW = "workflow:view"
     WORKFLOW_MANAGE = "workflow:manage"
+    # M5: start a workflow manually (and be the authority a manual run acts under).
+    WORKFLOW_RUN = "workflow:run"
+
+    # Integrations (M6): see connections; use them through tools; manage credentials.
+    INTEGRATION_VIEW = "integration:view"
+    INTEGRATION_USE = "integration:use"
+    INTEGRATION_MANAGE = "integration:manage"
     TASK_VIEW = "task:view"
     TASK_MANAGE = "task:manage"
+    # Memory (M4): read memories; write your own; manage agent/organization memory.
+    MEMORY_VIEW = "memory:view"
+    MEMORY_WRITE = "memory:write"
+    MEMORY_MANAGE = "memory:manage"
 
     # Analytics / audit / settings
     ANALYTICS_VIEW = "analytics:view"
@@ -100,10 +120,23 @@ _MEMBER_PERMISSIONS = _VIEW_PERMISSIONS + [
     Permission.CONVERSATION_CREATE,
     Permission.CONVERSATION_WRITE,
     Permission.KNOWLEDGE_SEARCH,
+    Permission.MEMORY_WRITE,
+    Permission.WORKFLOW_RUN,
+    Permission.INTEGRATION_USE,
 ]
 
-# MANAGER: operational management (member work + team + agent/workflow authoring).
-_MANAGER_PERMISSIONS = _MEMBER_PERMISSIONS + [
+# OPERATOR (AI Operator): supervises deployed agents — decides approvals,
+# activates/pauses agents, watches runs, usage and operations. Cannot author or
+# reconfigure agents, and has no member/org administration.
+_OPERATOR_PERMISSIONS = _MEMBER_PERMISSIONS + [
+    Permission.AGENT_APPROVE_ACTIONS,
+    Permission.AGENT_OPERATE,
+    Permission.ANALYTICS_VIEW,
+    Permission.AI_VIEW_USAGE,
+]
+
+# MANAGER: operational management (operator work + team + agent/workflow authoring).
+_MANAGER_PERMISSIONS = _OPERATOR_PERMISSIONS + [
     Permission.TEAM_MANAGE,
     Permission.MEMBER_INVITE,
     Permission.AGENT_CREATE,
@@ -118,6 +151,8 @@ _MANAGER_PERMISSIONS = _MEMBER_PERMISSIONS + [
     Permission.KNOWLEDGE_UPDATE,
     Permission.KNOWLEDGE_INGEST,
     Permission.KNOWLEDGE_MANAGE_SOURCES,
+    Permission.KNOWLEDGE_MANAGE_ACCESS,
+    Permission.MEMORY_MANAGE,
 ]
 
 # ADMIN: full organization administration.
@@ -131,6 +166,8 @@ _ADMIN_PERMISSIONS = _MANAGER_PERMISSIONS + [
     Permission.AUDIT_VIEW,
     Permission.SETTINGS_MANAGE,
     Permission.KNOWLEDGE_DELETE,
+    Permission.KNOWLEDGE_READ_ALL,
+    Permission.INTEGRATION_MANAGE,
 ]
 
 # Default role -> permission-code mapping. SUPER_ADMIN gets the wildcard.
@@ -138,9 +175,15 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
     RoleName.SUPER_ADMIN.value: [Permission.WILDCARD],
     RoleName.ADMIN.value: sorted(set(_ADMIN_PERMISSIONS)),
     RoleName.MANAGER.value: sorted(set(_MANAGER_PERMISSIONS)),
+    RoleName.OPERATOR.value: sorted(set(_OPERATOR_PERMISSIONS)),
     RoleName.MEMBER.value: sorted(set(_MEMBER_PERMISSIONS)),
     RoleName.VIEWER.value: sorted(set(_VIEW_PERMISSIONS)),
 }
+
+
+# Roles only a platform superuser may grant. SUPER_ADMIN carries the wildcard, so
+# letting an org ADMIN assign it would be a privilege escalation.
+PLATFORM_ONLY_ROLES: frozenset[str] = frozenset({RoleName.SUPER_ADMIN.value})
 
 
 def permissions_for_role(role_name: str) -> set[str]:

@@ -12,7 +12,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.models.enums import ToolPermissionMode
+from app.models.enums import ToolPermissionMode, ToolRiskLevel
 
 
 @dataclass(frozen=True)
@@ -27,6 +27,16 @@ class ToolContext:
     # An async callable(query, knowledge_base_ids, top_k) -> dict that performs a
     # tenant- AND agent-scoped retrieval. Tools never get raw DB/gateway access.
     knowledge_search: Any = None
+    # Tenant-, agent- and run-bound access to tasks and notifications
+    # (`app.services.work_service.AgentWorkspace`), injected by the runtime.
+    workspace: Any = None
+    # Structured queries over tabular knowledge (M3), scoped like knowledge_search.
+    knowledge_tables: Any = None
+    # Run-bound long-term memory (`app.services.memory_service.AgentMemory`, M4).
+    memory: Any = None
+    # Run-bound access to the organization's integrations
+    # (`app.integrations.service.IntegrationGateway`, M6). Never exposes secrets.
+    integrations: Any = None
 
 
 @dataclass
@@ -56,6 +66,28 @@ class ToolHandler(abc.ABC):
     input_schema: dict[str, Any] = {"type": "object", "properties": {}}
     output_schema: dict[str, Any] = {"type": "object", "properties": {}}
     default_permission_mode: str = ToolPermissionMode.AUTO.value
+    #: Risk of the tool's side effects. Declared in code (not the DB) so it cannot
+    #: be loosened by editing catalogue rows. HIGH always requires human approval.
+    risk_level: str = ToolRiskLevel.LOW.value
+    #: RBAC permission the *initiating user* must hold for an agent to use this
+    #: tool on their behalf — an agent can never exceed its user's rights.
+    required_permission: str | None = None
+    #: Whether workflow tool steps may call this tool (M5). Tools that need an
+    #: agent's capabilities (knowledge scoped to an agent, agent memory) cannot.
+    available_in_workflows: bool = False
+
+    def effective_mode(self, configured_mode: str) -> str:
+        """Combine the configured permission mode with the tool's risk level.
+
+        Configuration may tighten a policy or disable a tool, but a HIGH-risk
+        tool can never run without approval.
+        """
+        if (
+            self.risk_level == ToolRiskLevel.HIGH.value
+            and configured_mode == ToolPermissionMode.AUTO.value
+        ):
+            return ToolPermissionMode.APPROVAL_REQUIRED.value
+        return configured_mode
 
     @abc.abstractmethod
     async def execute(self, context: ToolContext, arguments: dict[str, Any]) -> ToolResult:

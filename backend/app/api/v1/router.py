@@ -10,10 +10,17 @@ from app.api.v1 import (
     approvals,
     auth,
     conversations,
+    hooks,
+    integrations,
     knowledge,
+    memory,
     organizations,
+    runs,
+    templates,
     tools,
     users,
+    work,
+    workflows,
 )
 
 api_router = APIRouter()
@@ -26,3 +33,10 @@ api_router.include_router(conversations.router)
 api_router.include_router(tools.router)
 api_router.include_router(approvals.router)
 api_router.include_router(knowledge.router)
+api_router.include_router(runs.router)
+api_router.include_router(work.router)
+api_router.include_router(templates.router)
+api_router.include_router(memory.router)
+api_router.include_router(workflows.router)
+api_router.include_router(integrations.router)
+api_router.include_router(hooks.router)

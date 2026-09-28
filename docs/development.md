@@ -44,6 +44,22 @@ npm run typecheck
 npm run build
 ```
 
+## UI smoke test
+Drives the operating environment in a real browser. It needs no API keys: the
+backend uses the built-in mock model.
+```bash
+# 1. backend (fresh SQLite DB) and worker, with the mock model
+cd backend
+export DATABASE_URL=sqlite+aiosqlite:///./smoke.db AI_DEFAULT_PROVIDER=mock AI_DEFAULT_MODEL=mock-1 RATE_LIMIT_ENABLED=false
+uvicorn app.main:app --port 8000 &
+python -m app.agents.worker &
+# 2. frontend
+cd ../frontend && npm run build && npm start &
+# 3. run (screenshots go to ./e2e-shots)
+npm i --no-save playwright-core && node e2e/smoke.mjs e2e-shots
+```
+Set `CHROMIUM_PATH` if Playwright's own browser is not installed.
+
 ## Conventions
 - Conventional Commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`.
 - Keep routers thin; put business logic in services; scope every tenant query.

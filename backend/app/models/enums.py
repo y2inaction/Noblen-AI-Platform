@@ -12,6 +12,7 @@ class RoleName(str, enum.Enum):
     SUPER_ADMIN = "SUPER_ADMIN"  # platform-wide administration
     ADMIN = "ADMIN"  # organization administration
     MANAGER = "MANAGER"  # team & operational management
+    OPERATOR = "OPERATOR"  # AI Operator: supervises agents, decides approvals
     MEMBER = "MEMBER"  # normal business usage
     VIEWER = "VIEWER"  # read-only access
 
@@ -80,11 +81,81 @@ class ApprovalStatus(str, enum.Enum):
     EXPIRED = "EXPIRED"
 
 
+class ToolRiskLevel(str, enum.Enum):
+    """Risk of a tool's side effects. HIGH always requires human approval."""
+
+    LOW = "LOW"  # read-only / internal
+    MEDIUM = "MEDIUM"  # internal side effects
+    HIGH = "HIGH"  # external, financial, destructive, contractual
+
+
+# ---- AI Workforce operations (Noblen AI 3.0, M1) ----
+class RunStatus(str, enum.Enum):
+    QUEUED = "QUEUED"  # accepted for background execution (M2)
+    RUNNING = "RUNNING"
+    AWAITING_APPROVAL = "AWAITING_APPROVAL"
+    COMPLETED = "COMPLETED"
+    ESCALATED = "ESCALATED"
+    FAILED = "FAILED"
+
+
+class RunStepType(str, enum.Enum):
+    MODEL_CALL = "MODEL_CALL"
+    TOOL_CALL = "TOOL_CALL"
+    APPROVAL = "APPROVAL"
+    ESCALATION = "ESCALATION"
+    MEMORY = "MEMORY"  # long-term memory loaded into the run's context (M4)
+
+
+class RunStepStatus(str, enum.Enum):
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    DENIED = "DENIED"
+    PENDING = "PENDING"
+
+
+# ---- Work items (Noblen AI 3.0, M2) ----
+class TaskStatus(str, enum.Enum):
+    OPEN = "OPEN"
+    IN_PROGRESS = "IN_PROGRESS"
+    DONE = "DONE"
+    CANCELLED = "CANCELLED"
+
+
+class TaskPriority(str, enum.Enum):
+    LOW = "LOW"
+    NORMAL = "NORMAL"
+    HIGH = "HIGH"
+    URGENT = "URGENT"
+
+
 # ---- Knowledge + RAG (Phase 4) ----
 class KnowledgeBaseStatus(str, enum.Enum):
     ACTIVE = "ACTIVE"
     PAUSED = "PAUSED"
     ARCHIVED = "ARCHIVED"
+
+
+class KnowledgeVisibility(str, enum.Enum):
+    """Who inside the organization may read a knowledge base (Noblen AI 3.0, M3)."""
+
+    ORGANIZATION = "ORGANIZATION"  # every member with knowledge permissions
+    RESTRICTED = "RESTRICTED"  # only granted users/roles (plus creator and read-all)
+
+
+class DocumentVisibility(str, enum.Enum):
+    INHERIT = "INHERIT"  # anyone who can read the knowledge base
+    RESTRICTED = "RESTRICTED"  # additionally requires a document grant
+
+
+class GrantPrincipalType(str, enum.Enum):
+    USER = "USER"
+    ROLE = "ROLE"
+
+
+class KnowledgeResourceType(str, enum.Enum):
+    KNOWLEDGE_BASE = "KNOWLEDGE_BASE"
+    DOCUMENT = "DOCUMENT"
 
 
 class DocumentSourceType(str, enum.Enum):
@@ -102,3 +173,57 @@ class DocumentStatus(str, enum.Enum):
 
 
 # ruff: noqa: UP042  (str+Enum kept intentionally for JSON/DB value compatibility)
+
+
+# ---- Memory (Noblen AI 3.0, M4) ----
+class MemoryScope(str, enum.Enum):
+    USER = "USER"  # private to one person (and agents they run)
+    AGENT = "AGENT"  # shared by everyone who uses one agent
+    ORGANIZATION = "ORGANIZATION"  # institutional, readable by all members
+
+
+# ---- Workflows (Noblen AI 3.0, M5) ----
+class WorkflowStatus(str, enum.Enum):
+    DRAFT = "DRAFT"
+    ACTIVE = "ACTIVE"
+    PAUSED = "PAUSED"
+    ARCHIVED = "ARCHIVED"
+
+
+class WorkflowTriggerType(str, enum.Enum):
+    MANUAL = "MANUAL"
+    SCHEDULE = "SCHEDULE"
+    EVENT = "EVENT"
+    WEBHOOK = "WEBHOOK"  # M6: an external system POSTs to the workflow's hook URL
+
+
+class WorkflowRunStatus(str, enum.Enum):
+    QUEUED = "QUEUED"  # waiting for a worker (also: waiting for a retry's backoff)
+    RUNNING = "RUNNING"
+    WAITING = "WAITING"  # on a human approval or an agent's own approval
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    ESCALATED = "ESCALATED"
+    CANCELLED = "CANCELLED"
+
+
+class WorkflowStepStatus(str, enum.Enum):
+    RUNNING = "RUNNING"
+    WAITING = "WAITING"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    REJECTED = "REJECTED"
+
+
+# ---- Integrations (Noblen AI 3.0, M6) ----
+class IntegrationProvider(str, enum.Enum):
+    SMTP = "SMTP"  # outbound email
+    WEBHOOK = "WEBHOOK"  # outbound HTTPS webhook
+    MCP = "MCP"  # remote MCP server (Streamable HTTP)
+    CALDAV = "CALDAV"  # calendar (Google, iCloud, Fastmail, Nextcloud, ...)
+    HUBSPOT = "HUBSPOT"  # CRM
+
+
+class IntegrationStatus(str, enum.Enum):
+    ACTIVE = "ACTIVE"
+    DISABLED = "DISABLED"

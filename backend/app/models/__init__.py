@@ -19,24 +19,34 @@ from app.models.conversation import (
     ConversationMessage,
     ConversationParticipant,
 )
+from app.models.integration import IntegrationConnection, IntegrationTool
 from app.models.knowledge import (
     AgentKnowledgeSource,
     DocumentChunk,
     DocumentEmbedding,
+    KnowledgeAccessGrant,
     KnowledgeBase,
     KnowledgeDocument,
+    KnowledgeTable,
+    KnowledgeTableRow,
 )
 from app.models.membership import OrganizationMember
+from app.models.memory import Memory
 from app.models.organization import Organization
 from app.models.rbac import Permission, Role, role_permissions
+from app.models.run import AgentRun, AgentRunStep
 from app.models.team import Team, TeamMember
 from app.models.tool import AgentTool, Tool
 from app.models.user import User
+from app.models.work import Notification, Task
+from app.models.workflow import Workflow, WorkflowRun, WorkflowStepRun, WorkflowVersion
 
 __all__ = [
     "Base",
     "Agent",
     "AgentTool",
+    "AgentRun",
+    "AgentRunStep",
     "AgentVersion",
     "AIUsageRecord",
     "Approval",
@@ -49,6 +59,9 @@ __all__ = [
     "DocumentEmbedding",
     "KnowledgeBase",
     "KnowledgeDocument",
+    "KnowledgeAccessGrant",
+    "KnowledgeTable",
+    "KnowledgeTableRow",
     "Tool",
     "EmailVerificationToken",
     "PasswordResetToken",
@@ -61,4 +74,13 @@ __all__ = [
     "Team",
     "TeamMember",
     "User",
+    "Task",
+    "Notification",
+    "Memory",
+    "Workflow",
+    "WorkflowVersion",
+    "WorkflowRun",
+    "WorkflowStepRun",
+    "IntegrationConnection",
+    "IntegrationTool",
 ]
