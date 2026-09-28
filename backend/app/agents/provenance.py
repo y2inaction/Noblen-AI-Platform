@@ -19,9 +19,12 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterable, Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.models.enums import MemoryScope
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 MAX_SOURCES = 500
 
@@ -133,3 +136,60 @@ class ProvenanceCollector:
     def snapshot(self) -> tuple[list[Reference], bool]:
         """What to persist: (sources, sources_truncated)."""
         return self.sources, self._truncated
+
+
+# --------------------------------------------------------------------------- #
+# Reference builders used by the capture points (ids and scope only, never text)
+# --------------------------------------------------------------------------- #
+def document_ref(document_id: uuid.UUID | str) -> Reference:
+    return {"type": KNOWLEDGE_DOCUMENT, "id": str(document_id)}
+
+
+def table_ref(table_id: uuid.UUID | str) -> Reference:
+    return {"type": KNOWLEDGE_TABLE, "id": str(table_id)}
+
+
+def memory_ref(memory_id: uuid.UUID | str, scope: str) -> Reference:
+    return {"type": MEMORY, "id": str(memory_id), "scope": scope}
+
+
+def integration_ref(connection_id: uuid.UUID | str) -> Reference:
+    return {"type": INTEGRATION, "id": str(connection_id)}
+
+
+def external_input_ref() -> Reference:
+    return {"type": EXTERNAL_INPUT}
+
+
+def record(collector: ProvenanceCollector | None, ref: Mapping[str, Any]) -> None:
+    """Add to a run's collector when the capability is bound to one."""
+    if collector is not None:
+        collector.add(ref)
+
+
+async def acting_role(
+    db: AsyncSession, organization_id: uuid.UUID, user_id: uuid.UUID | None
+) -> str | None:
+    """The role a run's person holds when it starts (`acting_role`)."""
+    from sqlalchemy import select
+
+    from app.models.enums import MembershipStatus
+    from app.models.membership import OrganizationMember
+    from app.models.user import User
+
+    if user_id is None:
+        return None
+    user = await db.get(User, user_id)
+    if user is not None and user.is_superuser:
+        return "SUPER_ADMIN"
+    member = (
+        await db.execute(
+            select(OrganizationMember).where(
+                OrganizationMember.user_id == user_id,
+                OrganizationMember.organization_id == organization_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if member is None or member.status != MembershipStatus.ACTIVE.value:
+        return None
+    return member.role_name

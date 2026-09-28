@@ -22,6 +22,7 @@ from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents import provenance
 from app.core.config import settings
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.db.tenant import tenant_scoped
@@ -349,6 +350,9 @@ class IntegrationGateway:
     user_id: uuid.UUID | None
     agent_id: uuid.UUID | None = None
     run_id: uuid.UUID | None = None
+    # The run's provenance collector (M8): the connection id of every call is
+    # recorded, never the request, the response or the credentials.
+    provenance: Any = None
 
     async def _connection(self, provider: str, name: str | None) -> IntegrationConnection:
         stmt = select(IntegrationConnection).where(
@@ -380,6 +384,9 @@ class IntegrationGateway:
         audit: bool = True,
     ) -> T:
         connection = await self._connection(provider, name)
+        # Recorded before the call: whatever the service returns, even an error the
+        # model sees, derives from this connection.
+        provenance.record(self.provenance, provenance.integration_ref(connection.id))
         try:
             result = await call(connection.config, secrets.decrypt(connection.secret_ciphertext))
         except IntegrationError as exc:

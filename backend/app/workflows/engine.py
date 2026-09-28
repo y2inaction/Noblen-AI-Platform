@@ -31,6 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents import conversations as conversation_service
+from app.agents.provenance import ProvenanceCollector
 from app.agents.runtime import AgentRuntime
 from app.agents.tools.base import ToolContext
 from app.agents.tools.registry import ToolRegistry, tool_registry, validate_arguments
@@ -85,6 +86,16 @@ class _Outcome:
     goto: str | None = None  # explicit next step for branches; None = the default
     error: str | None = None
     retryable: bool = False
+
+
+def _take_agent_provenance(step_run: WorkflowStepRun, agent_run: AgentRun | None) -> None:
+    """An agent step's sources are its agent run's sources (M8). An agent run with
+    unknown provenance leaves the step unknown too (truncated, fails closed)."""
+    if agent_run is None:
+        return
+    collector = ProvenanceCollector()
+    collector.inherit(agent_run.sources, agent_run.sources_truncated)
+    step_run.sources, step_run.sources_truncated = collector.snapshot()
 
 
 def _done(output: dict[str, Any] | None = None, goto: str | None = None) -> _Outcome:
@@ -177,6 +188,9 @@ class WorkflowEngine:
             attempt=run.current_attempt,
             status=WorkflowStepStatus.RUNNING.value,
             started_at=_now(),
+            # Provenance (M8): filled by the step's capture points below.
+            sources=[],
+            sources_truncated=False,
         )
         db.add(step_run)
         return step_run
@@ -335,6 +349,7 @@ class WorkflowEngine:
             if decided.kind != "done":
                 return decided
 
+        collector = ProvenanceCollector()
         context = ToolContext(
             organization_id=run.organization_id,
             user_id=run.initiated_by,
@@ -349,13 +364,20 @@ class WorkflowEngine:
                 user_id=run.initiated_by,
             ),
             integrations=IntegrationGateway(
-                db=db, organization_id=run.organization_id, user_id=run.initiated_by
+                db=db,
+                organization_id=run.organization_id,
+                user_id=run.initiated_by,
+                provenance=collector,
             ),
+            provenance=collector,
         )
         try:
             result = await handler.execute(context, arguments)
         except Exception as exc:  # noqa: BLE001 - never leak internals
             return _fail(f"Tool '{step.tool}' failed ({type(exc).__name__}).", retryable=True)
+        finally:
+            # Provenance (M8): what this tool step itself observed (connections).
+            step_run.sources, step_run.sources_truncated = collector.snapshot()
         if not result.ok:
             return _fail(result.error or f"Tool '{step.tool}' failed.")
         if handler.risk_level != ToolRiskLevel.LOW.value:
@@ -379,7 +401,7 @@ class WorkflowEngine:
         step_run: WorkflowStepRun,
     ) -> _Outcome:
         if step_run.agent_run_id is not None:
-            return await self._agent_result(db, step_run.agent_run_id)
+            return await self._agent_result(db, step_run.agent_run_id, step_run)
         assert run.initiated_by is not None
         message = str(render(step.input, self._context(run)))
         conversation = await conversation_service.create_conversation(
@@ -405,6 +427,7 @@ class WorkflowEngine:
         except AppError as exc:
             return _fail(exc.message)
         step_run.agent_run_id = result.run_id
+        _take_agent_provenance(step_run, await db.get(AgentRun, result.run_id))
         if result.status == "completed":
             return _done(
                 {
@@ -416,10 +439,13 @@ class WorkflowEngine:
             return _Outcome("wait")
         return _fail(f"The agent escalated: {result.escalation_reason or 'no reason given'}")
 
-    async def _agent_result(self, db: AsyncSession, agent_run_id: uuid.UUID) -> _Outcome:
+    async def _agent_result(
+        self, db: AsyncSession, agent_run_id: uuid.UUID, step_run: WorkflowStepRun
+    ) -> _Outcome:
         agent_run = await db.get(AgentRun, agent_run_id)
         if agent_run is None:
             return _fail("The agent run no longer exists.")
+        _take_agent_provenance(step_run, agent_run)
         if agent_run.status not in _AGENT_TERMINAL:
             return _Outcome("wait")
         if agent_run.status == RunStatus.COMPLETED.value and agent_run.conversation_id:

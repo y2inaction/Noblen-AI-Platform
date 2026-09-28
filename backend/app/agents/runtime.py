@@ -36,9 +36,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents import approvals as approval_service
 from app.agents import conversations as conversation_service
+from app.agents import provenance
 from app.agents import registry as agent_registry
 from app.agents.errors import AgentInactive
 from app.agents.memory import load_run_context
+from app.agents.provenance import ProvenanceCollector
 from app.agents.tools.base import ToolContext
 from app.agents.tools.registry import ToolRegistry, tool_registry, validate_arguments
 from app.ai.errors import AIError
@@ -194,6 +196,7 @@ class AgentRuntime:
         organization_id: uuid.UUID,
         agent_id: uuid.UUID,
         user_id: uuid.UUID | None,
+        collector: ProvenanceCollector | None = None,
     ):
         """Return an async, tenant- AND agent-scoped knowledge-search capability.
 
@@ -224,6 +227,9 @@ class AgentRuntime:
             )
             if not results:
                 return {**empty, "message": "No relevant knowledge found."}
+            # Provenance (M8): the documents actually returned, after the ACL filter.
+            for r in results:
+                provenance.record(collector, provenance.document_ref(r.document_id))
             return {
                 "count": len(results),
                 "results": [
@@ -298,6 +304,11 @@ class AgentRuntime:
     async def _build_state(
         self, db: AsyncSession, run: AgentRun, agent: Agent, version: AgentVersion
     ) -> _RunState:
+        # Provenance (M8): continue what this run already recorded. A run with
+        # unknown provenance (NULL, pre-M8) stays unknown: the collector is
+        # truncated and fails closed.
+        collector = ProvenanceCollector()
+        collector.inherit(run.sources, run.sources_truncated)
         context = ToolContext(
             organization_id=run.organization_id,
             user_id=run.initiated_by,
@@ -305,7 +316,7 @@ class AgentRuntime:
             conversation_id=run.conversation_id,
             org_settings=await self._org_settings(db, run.organization_id),
             knowledge_search=self._build_knowledge_search(
-                db, run.organization_id, agent.id, run.initiated_by
+                db, run.organization_id, agent.id, run.initiated_by, collector
             ),
             workspace=AgentWorkspace(
                 db=db,
@@ -319,6 +330,7 @@ class AgentRuntime:
                 organization_id=run.organization_id,
                 agent_id=agent.id,
                 user_id=run.initiated_by,
+                provenance=collector,
             ),
             memory=AgentMemory(
                 db=db,
@@ -326,6 +338,7 @@ class AgentRuntime:
                 agent_id=agent.id,
                 run_id=run.id,
                 user_id=run.initiated_by,
+                provenance=collector,
             ),
             integrations=IntegrationGateway(
                 db=db,
@@ -333,7 +346,9 @@ class AgentRuntime:
                 user_id=run.initiated_by,
                 agent_id=agent.id,
                 run_id=run.id,
+                provenance=collector,
             ),
+            provenance=collector,
         )
         bindings, specs = await self._load_tools(db, run.organization_id, agent.id)
         state = _RunState(
@@ -341,7 +356,14 @@ class AgentRuntime:
         )
         if self._memory_mode(state) == MemoryMode.PERSISTENT.value:
             state.memory_context = await self._load_long_term_memory(db, state)
+        self._save_provenance(state)
         return state
+
+    @staticmethod
+    def _save_provenance(state: _RunState) -> None:
+        """Copy the run's collected provenance onto its row (flushed with the run)."""
+        collector: ProvenanceCollector = state.context.provenance
+        state.run.sources, state.run.sources_truncated = collector.snapshot()
 
     @staticmethod
     def _memory_mode(state: _RunState) -> str:
@@ -352,6 +374,10 @@ class AgentRuntime:
         memories = await memory_service.context_for_run(
             db, state.run.organization_id, state.run.initiated_by, state.agent.id
         )
+        # Provenance (M8): every memory injected into the system prompt.
+        for items in memories.values():
+            for memory in items:
+                state.context.provenance.add(provenance.memory_ref(memory.id, memory.scope))
         counts = {scope.lower(): len(items) for scope, items in memories.items()}
         if any(counts.values()):
             # The trace records how much was loaded, never the content.
@@ -421,6 +447,10 @@ class AgentRuntime:
             status=RunStatus.QUEUED.value if background else RunStatus.RUNNING.value,
             context_start_sequence=user_message.sequence,
             started_at=None if background else _now(),
+            # Provenance (M8): known and empty until a capability records a source.
+            sources=[],
+            sources_truncated=False,
+            acting_role=await provenance.acting_role(db, organization_id, user_id),
         )
         db.add(run)
         await db.flush()
@@ -827,6 +857,7 @@ class AgentRuntime:
             logger.exception("agent_tool_crashed", tool_name=tool_call.name)
             output = {"error": f"The tool failed unexpectedly ({type(exc).__name__})."}
             ok = False
+        self._save_provenance(state)
         await self._add_step(
             db,
             run,
@@ -1076,6 +1107,7 @@ class AgentRuntime:
         run = state.run
         run.status = status.value
         run.completed_at = _now()
+        self._save_provenance(state)
         await record_audit(
             db,
             action=f"agent.run_{status.value.lower()}",
