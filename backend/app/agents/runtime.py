@@ -408,8 +408,17 @@ class AgentRuntime:
         input_message: str,
         version_id: uuid.UUID | None = None,
         background: bool = False,
+        conversation_is_source: bool = True,
     ) -> RuntimeResult:
-        """Admit a task and run it now, or queue it for a worker (`background`)."""
+        """Admit a task and run it now, or queue it for a worker (`background`).
+
+        The run reads its conversation (the person's message and, per the memory
+        mode, earlier turns), which is private to the conversation's participants,
+        so the conversation is recorded as a source (M8). The workflow engine
+        passes `conversation_is_source=False` for the conversation it creates for
+        one step: that holds only the rendered step input, whose provenance the
+        engine records itself.
+        """
         if len(input_message) > settings.AGENT_MAX_INPUT_CHARS:
             from app.core.exceptions import ValidationError
 
@@ -447,8 +456,10 @@ class AgentRuntime:
             status=RunStatus.QUEUED.value if background else RunStatus.RUNNING.value,
             context_start_sequence=user_message.sequence,
             started_at=None if background else _now(),
-            # Provenance (M8): known and empty until a capability records a source.
-            sources=[],
+            # Provenance (M8): the conversation, plus what the capabilities record.
+            sources=[provenance.conversation_ref(conversation_id)]
+            if conversation_is_source
+            else [],
             sources_truncated=False,
             acting_role=await provenance.acting_role(db, organization_id, user_id),
         )

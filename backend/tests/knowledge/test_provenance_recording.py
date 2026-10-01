@@ -54,10 +54,15 @@ async def test_retrieval_records_returned_documents_only(pg_client, pg_sessions)
     as_admin = await _search_run(pg_client, pg_sessions, admin, agent_id)
     refs = lambda run: {(r["type"], r["id"]) for r in run.sources}  # noqa: E731
     # The member's search filtered Salaries out, so it is not a source of their run.
-    assert refs(as_member) == {("knowledge_document", handbook["id"])}
+    # Each run also read its person's conversation (M8.7).
+    assert refs(as_member) == {
+        ("knowledge_document", handbook["id"]),
+        ("conversation", str(as_member.conversation_id)),
+    }
     assert refs(as_admin) == {
         ("knowledge_document", handbook["id"]),
         ("knowledge_document", salaries["id"]),
+        ("conversation", str(as_admin.conversation_id)),
     }
     assert as_member.acting_role == "MEMBER" and as_admin.acting_role == "ADMIN"
     for run in (as_member, as_admin):

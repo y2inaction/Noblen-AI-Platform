@@ -52,5 +52,8 @@ async def test_calendar_reads_record_the_connection_used(
     async with session_factory() as s:
         run = await s.get(AgentRun, uuid.UUID(result["run_id"]))
     assert run is not None
-    assert {(r["type"], r.get("id")) for r in run.sources} == {("integration", connection["id"])}
+    assert {(r["type"], r.get("id")) for r in run.sources} == {
+        ("integration", connection["id"]),
+        ("conversation", str(run.conversation_id)),
+    }
     assert "Supplier call" not in json.dumps(run.sources)

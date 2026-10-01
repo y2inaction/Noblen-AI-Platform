@@ -491,6 +491,9 @@ class WorkflowEngine:
                 agent_id=step.agent_id,
                 conversation_id=conversation.id,
                 input_message=message,
+                # A fresh conversation holding only the rendered step input: its
+                # provenance is what the step consumed (recorded in _propagate).
+                conversation_is_source=False,
             )
         except AIError as exc:
             return _fail(

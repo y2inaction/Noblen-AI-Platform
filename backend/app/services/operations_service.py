@@ -20,7 +20,12 @@ from app.models.ai_usage import AIUsageRecord
 from app.models.approval import Approval
 from app.models.enums import ApprovalStatus, RunStatus, RunStepStatus, RunStepType
 from app.models.run import AgentRun, AgentRunStep
-from app.rbac.visibility import Viewer, present_escalation_reason
+from app.rbac.visibility import (
+    Viewer,
+    present_escalation_reason,
+    resolve_source_access,
+    sees_run_content,
+)
 from app.schemas.run import OperationsOverviewOut
 
 
@@ -147,6 +152,8 @@ async def overview(
             AgentRun.escalation_reason,
             AgentRun.completed_at,
             AgentRun.initiated_by,
+            AgentRun.sources,
+            AgentRun.sources_truncated,
         )
         .where(
             AgentRun.organization_id == org,
@@ -155,6 +162,15 @@ async def overview(
         )
         .order_by(AgentRun.created_at.desc())
         .limit(10)
+    )
+
+    recent = escalations.tuples().all()
+    # The model's reason is run content (ADR-0035): shown under the M8 run rule.
+    access = await resolve_source_access(
+        db,
+        viewer,
+        org,
+        [(row[5], row[6]) for row in recent if not sees_run_content(viewer, row[4])],
     )
 
     completed = runs_by_status.get(RunStatus.COMPLETED.value, 0)
@@ -183,10 +199,11 @@ async def overview(
             {
                 "run_id": str(run_id),
                 "agent_id": str(agent_id),
-                # The model's reason is run content (ADR-0035).
-                "reason": present_escalation_reason(reason, initiated_by, viewer),
+                "reason": present_escalation_reason(
+                    reason, initiated_by, sources, truncated, viewer, access
+                ),
                 "at": at.isoformat() if at else None,
             }
-            for run_id, agent_id, reason, at, initiated_by in escalations.tuples().all()
+            for run_id, agent_id, reason, at, initiated_by, sources, truncated in recent
         ],
     )

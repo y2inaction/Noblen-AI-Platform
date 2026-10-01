@@ -273,8 +273,9 @@ async def test_agent_run_records_recalled_memories_by_reference(
     async with session_factory() as s:
         run = await s.get(AgentRun, run_id)
     assert run is not None
-    assert _refs(run.sources) == {("memory", mine)}
-    [ref] = run.sources
+    # The recalled memory, and Alice's conversation the run read (M8.7).
+    assert _refs(run.sources) == {("memory", mine), ("conversation", str(run.conversation_id))}
+    [ref] = [r for r in run.sources if r["type"] == "memory"]
     assert ref["scope"] == "USER"
     assert run.sources_truncated is False
     assert run.acting_role == "MEMBER"

@@ -71,7 +71,7 @@ remains a decision made at read time, against the viewer's *current* permissions
 
 - A reference is `{type, id}`. The types are `knowledge_document`,
   `knowledge_table`, `memory` (with its scope), `integration`, `workflow_step`,
-  `agent_run` and `external_input`.
+  `agent_run`, `conversation` (M8.7, see §6) and `external_input`.
 - At most 500 references per source-bearing row. On overflow, `sources_truncated =
   true`.
 - **Truncation propagates.** A step that inherits from a truncated upstream step, or
@@ -92,25 +92,53 @@ remains a decision made at read time, against the viewer's *current* permissions
 - An agent step's sources are its agent run's sources.
 - A workflow run's sources are the union of its steps' sources.
 - Webhook, event and manual run input is recorded as `external_input`.
+- An agent run started through the agent API records the conversation it reads (the
+  person's message and, per the memory mode, earlier turns) as `conversation`. The
+  conversation the workflow engine creates for one step is not recorded: it holds
+  only the rendered step input, whose provenance the step already inherits.
 
 ## 6. Read rule
 
-- `rbac/visibility.can_read_sources(db, viewer, sources)` does bounded bulk
-  resolution per reference type (I9). It reuses the existing checks:
+- **Rule.** Run content is visible to the run's person, or to a viewer who can read
+  every recorded source *now*: `participant OR can_read_sources`. The viewer's
+  current permissions decide (I8). Nothing captured at execution time grants
+  access.
+- `rbac/visibility.resolve_source_access` / `can_read_sources` resolve references in
+  bulk, inside the run's organization, reusing the existing checks:
 
   | Reference | Check |
   |---|---|
-  | knowledge | `readable_documents_query`; a table follows its parent document |
-  | memory | `_visible_to_member` |
-  | integration | `integration:use` |
-  | external input | organization member |
-  | `workflow_step` / `agent_run` | their own sources, resolved recursively |
+  | `knowledge_document` | `readable_documents_query` (`knowledge:read_all` is the only bypass) |
+  | `knowledge_table` | its parent document |
+  | `memory` | `_visible_to_member` on the stored row (the reference's scope label is not trusted), retention applied |
+  | `integration` | `integration:use` |
+  | `conversation` | `conversations.readable_by`, the conversation-participant rule |
+  | `external_input` | organization member |
+  | `workflow_step` / `agent_run` | their own recorded sources, followed at most `MAX_PROVENANCE_DEPTH` (4) levels |
 
-- `sees_run_content` becomes: the run's person, or `can_read_sources`, subject to
-  §1.2 (fail closed). The ADR-0035 presenters stay the single place where the rule is
-  applied.
-- The `content_withheld` reason becomes one of `not_participant`,
-  `restricted_sources` or `unknown_provenance`, and the frontend displays it.
+- **Fail closed.** For anyone but the run's person, each of these withholds the
+  content as `unknown_provenance`:
+  - `sources IS NULL` (before M8);
+  - `sources = []`, because an empty list proves nothing and never widens
+    visibility;
+  - `sources_truncated = true`, which propagates (§4);
+  - a malformed reference, or one that cannot be resolved: missing, deleted, or in
+    another organization;
+  - a run reference that forms a cycle or lies deeper than the depth limit.
+- **Restricted.** When every reference resolves but the viewer cannot read one or
+  more of them, the content is withheld as `restricted_sources`. The response never
+  says which source denied access.
+- **Reasons.** `content_withheld_reason` is `null` when the content is shown.
+  Otherwise it is exactly one of `restricted_sources` or `unknown_provenance`.
+  There is no other externally visible reason.
+- **Cost (I9).** One query per reference type present, plus one per run type for
+  each level of run nesting (at most `MAX_PROVENANCE_DEPTH`). The count never
+  depends on the number of references. List endpoints resolve all their runs in
+  one batch.
+- The ADR-0035 presenters stay the single place where the rule is applied: agent
+  and workflow runs (list, detail and decision responses), their step outputs and
+  errors, escalation reasons in the operations overview, and the execution result
+  returned to an approver. Approvers still see the approval requests they decide.
 
 ## 7. Publication attribution
 

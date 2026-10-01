@@ -11,7 +11,7 @@ from app.api.deps import TenantContext, require_permission
 from app.db.session import get_db
 from app.models.enums import RunStatus
 from app.rbac.permissions import Permission
-from app.rbac.visibility import present_agent_run, present_agent_run_detail
+from app.rbac.visibility import present_agent_run_detail, present_agent_runs
 from app.schemas.run import OperationsOverviewOut, RunDetailOut, RunListOut
 from app.services import operations_service
 
@@ -35,7 +35,7 @@ async def list_runs(
         limit=limit,
         offset=offset,
     )
-    return RunListOut(items=[present_agent_run(r, ctx.viewer) for r in items], total=total)
+    return RunListOut(items=await present_agent_runs(db, items, ctx.viewer), total=total)
 
 
 @router.get("/runs/{run_id}", response_model=RunDetailOut)
@@ -45,7 +45,7 @@ async def get_run(
     db: AsyncSession = Depends(get_db),
 ) -> RunDetailOut:
     run, steps = await operations_service.get_run(db, ctx.organization_id, run_id)
-    return present_agent_run_detail(run, steps, ctx.viewer)
+    return await present_agent_run_detail(db, run, steps, ctx.viewer)
 
 
 @router.get("/operations/overview", response_model=OperationsOverviewOut)

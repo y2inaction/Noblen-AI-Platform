@@ -2,7 +2,8 @@
 
 A `ProvenanceCollector` lives for one run. Only trusted server-side capture
 points add to it: knowledge retrieval, memory injection and recall, the
-integration gateway, workflow templating and run input. It is never populated
+integration gateway, workflow templating, run input and the conversation an
+agent run reads. It is never populated
 from API input or model output. What it holds is persisted to the run's
 `sources` / `sources_truncated` columns, and the read rule
 (docs/architecture/milestone-8-provenance.md §6) decides visibility from it at
@@ -35,6 +36,7 @@ INTEGRATION = "integration"
 WORKFLOW_STEP = "workflow_step"
 AGENT_RUN = "agent_run"
 EXTERNAL_INPUT = "external_input"
+CONVERSATION = "conversation"
 
 SOURCE_TYPES = frozenset(
     {
@@ -45,6 +47,7 @@ SOURCE_TYPES = frozenset(
         WORKFLOW_STEP,
         AGENT_RUN,
         EXTERNAL_INPUT,
+        CONVERSATION,
     }
 )
 _MEMORY_SCOPES = frozenset(scope.value for scope in MemoryScope)
@@ -159,6 +162,10 @@ def integration_ref(connection_id: uuid.UUID | str) -> Reference:
 
 def external_input_ref() -> Reference:
     return {"type": EXTERNAL_INPUT}
+
+
+def conversation_ref(conversation_id: uuid.UUID | str) -> Reference:
+    return {"type": CONVERSATION, "id": str(conversation_id)}
 
 
 def record(collector: ProvenanceCollector | None, ref: Mapping[str, Any]) -> None:
