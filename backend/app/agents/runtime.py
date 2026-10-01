@@ -41,6 +41,7 @@ from app.agents import registry as agent_registry
 from app.agents.errors import AgentInactive
 from app.agents.memory import load_run_context
 from app.agents.provenance import ProvenanceCollector
+from app.agents.publication import is_publication_sink
 from app.agents.tools.base import ToolContext
 from app.agents.tools.registry import ToolRegistry, tool_registry, validate_arguments
 from app.ai.errors import AIError
@@ -813,7 +814,13 @@ class AgentRuntime:
                 ),
             }
 
-        needs_approval = binding.permission_mode == ToolPermissionMode.APPROVAL_REQUIRED.value
+        # Restricted publication (M9, ADR-0038): with the organization setting on, a
+        # publication derived from restricted or unknown provenance waits for an
+        # approval. It reuses the approval the binding may already require.
+        restricted = not pre_approved and await self._is_restricted_publication(db, state, binding)
+        needs_approval = (
+            binding.permission_mode == ToolPermissionMode.APPROVAL_REQUIRED.value or restricted
+        )
         if needs_approval and not pre_approved:
             approval = await approval_service.create_approval(
                 db,
@@ -826,11 +833,13 @@ class AgentRuntime:
                 requested_by=run.initiated_by,
                 reason=(
                     f"Agent requested tool '{tool_call.name}' "
-                    f"({binding.handler.risk_level} risk; approval required)."
+                    f"({binding.handler.risk_level} risk; "
+                    f"{'restricted publication, ' if restricted else ''}approval required)."
                 ),
             )
             approval.run_id = run.id
             approval.risk_level = binding.handler.risk_level
+            approval.restricted_publication = restricted
             run.status = RunStatus.AWAITING_APPROVAL.value
             await self._add_step(
                 db,
@@ -921,6 +930,25 @@ class AgentRuntime:
                 db, state, tool_call.id, tool_call.name, output
             ),
         }
+
+    async def _is_restricted_publication(
+        self, db: AsyncSession, state: _RunState, binding: _ToolBinding
+    ) -> bool:
+        """A publication sink, in an organization that requires approval for
+        restricted publications, from provenance a baseline member could not read
+        in full now (ADR-0037 `restricted`: unknown, empty or truncated is
+        restricted). Evaluated before the call executes."""
+        if not is_publication_sink(binding.handler):
+            return False
+        run = state.run
+        org = await db.get(Organization, run.organization_id)
+        if org is None or not org.require_approval_to_publish_restricted:
+            return False
+        self._save_provenance(state)
+        attribution = await publication_attribution(
+            db, run.organization_id, run.sources, run.sources_truncated
+        )
+        return bool(attribution["restricted"])
 
     async def _store_tool_result(
         self,

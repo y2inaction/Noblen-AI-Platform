@@ -98,6 +98,11 @@ an agent retrieved for that person. Run traces (`/runs`) stay visible with
 | POST | `/approvals/{id}/approve` · `/reject` (optional `{"note"}`) | `agent:approve_actions` |
 | POST | `/approvals/{id}/modify` `{"arguments", "note"}` | `agent:approve_actions` |
 
+Approvals carry `restricted_publication` (Milestone 9): true when the request gates
+an agent publication derived from restricted or unknown sources, which
+`require_approval_to_publish_restricted` makes wait for approval. Approver
+eligibility and payload confidentiality for these requests are not implemented yet.
+
 Agent execution returns a normalized result whose `status` is `completed`,
 `awaiting_approval` or `escalated`, with a `run_id` (and `escalation_reason` when
 escalated). See [`architecture/agents.md`](./architecture/agents.md).
@@ -122,7 +127,8 @@ escalated). See [`architecture/agents.md`](./architecture/agents.md).
 `PATCH /organizations/current` accepts `require_independent_approval` (separation of duties).
 It also accepts `require_approval_to_publish_restricted` (boolean, default `false`;
 Milestone 9, ADR-0038), returned by `GET /organizations/current`. The setting is
-stored only: approval enforcement is not implemented yet.
+enforced for agent publications (see Approvals above); workflow publications are
+not gated yet.
 
 ### Memory — `/api/v1/memories` (Noblen AI 3.0, M4)
 | Method | Path | Permission |

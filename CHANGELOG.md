@@ -10,7 +10,16 @@ and the project uses Conventional Commits.
 - **Setting:** organizations have `require_approval_to_publish_restricted`
   (default `false`), read and written through `/organizations/current` under
   `org:manage`. Migration `5b9e1c3d7a42` adds it, and existing organizations get
-  `false`. It is stored only: no approval behavior changes yet.
+  `false`.
+- **Agent publications (M9.4):** with the setting on, an agent's call to a
+  publication sink (`create_task`, `update_task`, `notify_member`,
+  `save_agent_memory`, `send_email`, `call_webhook`, `create_calendar_event`,
+  `upsert_crm_contact`, `add_crm_note`, enabled MCP tools) whose provenance a
+  baseline member could not read in full waits for an approval before it runs.
+  Unknown, empty or truncated provenance counts as restricted. An approval the
+  tool already required is reused; there is one request per call. Migration
+  `8e4f2a6c1b97` adds `approvals.restricted_publication`. Workflow tool steps,
+  approver eligibility and payload confidentiality come next (M9.5, M9.6).
 
 ### Milestone 8 — Permission propagation & provenance (ADR-0037)
 - **Run content now follows its sources** (**behavior change**). Agent and workflow

@@ -33,6 +33,8 @@ class ApprovalOut(BaseModel):
     risk_level: str | None = None
     modified_payload: dict[str, Any] | None = None
     decision_note: str | None = None
+    # Milestone 9 (ADR-0038): the request gates a restricted publication.
+    restricted_publication: bool = False
 
 
 class ApprovalListOut(BaseModel):

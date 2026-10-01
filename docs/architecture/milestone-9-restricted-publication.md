@@ -216,15 +216,24 @@ Content is never written to the audit trail. The existing events gain metadata:
   detail.
 - **P9.** Milestone 8 behavior (provenance, read rule, attribution) is unchanged.
 
-## 13. Schema (M9.3)
+## 13. Schema (M9.3–M9.5)
 
 - `organizations.require_approval_to_publish_restricted` (boolean, default false).
 - A persisted restricted-publication marker on the request:
   `approvals.restricted_publication` and `workflow_step_runs.restricted_publication`
   (boolean, default false).
 
-Both are added in one reversible migration, with no backfill. The marker makes the
-§4 rule (turning the setting off does not release a request) enforceable. The
+Each column arrives with the step that first needs it, in its own reversible
+migration with no backfill:
+
+| Step | Migration | Column |
+|---|---|---|
+| M9.3 | `5b9e1c3d7a42` | `organizations.require_approval_to_publish_restricted` |
+| M9.4 | `8e4f2a6c1b97` | `approvals.restricted_publication` |
+| M9.5 | (to come) | `workflow_step_runs.restricted_publication` |
+
+The marker makes the §4 rule (turning the setting off does not release a request)
+enforceable. The
 provenance used for eligibility is the existing `sources` / `sources_truncated` of
 the agent run or workflow step run. No other schema change is planned.
 
@@ -236,9 +245,9 @@ Each step stops for review.
 |---|---|---|
 | M9.1 | this contract and ADR-0038 (Proposed) | **stop and report** |
 | M9.2 | security tests, failing by design | **stop and report the failing evidence** |
-| M9.3 | migration, organization setting, sink list | |
-| M9.4 | agent path: detect, request, mark (one request per execution) | |
-| M9.5 | workflow path: the same rule through `WAITING`/`decide` | |
+| M9.3 | organization setting and its migration | |
+| M9.4 | sink list; agent path: detect, request, mark (one request per execution); approval marker migration | |
+| M9.5 | workflow path: the same rule through `WAITING`/`decide`; step marker migration | |
 | M9.6 | approver eligibility and payload confidentiality (§6–§8) | |
 | M9.7 | audit metadata (§10) | |
 | M9.8 | frontend: the existing approvals inbox shows metadata-only requests | |

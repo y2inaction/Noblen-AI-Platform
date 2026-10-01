@@ -962,3 +962,139 @@ async def test_requests_and_decisions_are_audited_without_content(
     )
     assert meta["source_counts"] == {"external_input": 1, "knowledge_document": 1}
     assert wf_secret not in json.dumps(meta)
+
+
+# --------------------------------------------------------------------------- #
+# M9.4: the agent path on its own (gate, marker, single request, resume)
+# --------------------------------------------------------------------------- #
+def test_publication_sinks_are_the_approved_list():
+    from app.agents.publication import PUBLICATION_SINKS, is_publication_sink
+    from app.agents.tools.registry import tool_registry
+    from app.integrations.tools import McpToolHandler
+
+    sinks = {h.handler_identifier for h in tool_registry.all() if is_publication_sink(h)}
+    assert (
+        sinks
+        == set(PUBLICATION_SINKS)
+        == {
+            "create_task",
+            "update_task",
+            "notify_member",
+            "save_agent_memory",
+            "send_email",
+            "call_webhook",
+            "create_calendar_event",
+            "upsert_crm_contact",
+            "add_crm_note",
+        }
+    )
+    assert is_publication_sink(McpToolHandler(uuid.uuid4(), "mcp_x_y", "LOW"))
+    for name in ("recall_memories", "list_tasks", "save_user_memory", "forget_user_memory"):
+        assert not is_publication_sink(tool_registry.get_by_identifier(name))
+
+
+async def _agent_step_after(client, session_factory, runtime, provider, team, sources, truncated):
+    """A workflow agent step whose input derives from an upstream step with the
+    given provenance; the agent's own create_task call is the publication."""
+    created = await client.post(
+        "/api/v1/workflows",
+        headers=_h(team["owner"]),
+        json={
+            "name": f"Plan {uuid.uuid4().hex[:6]}",
+            "definition": {
+                "steps": [
+                    {"id": "check", "type": "approval", "title": "Prepare?"},
+                    {
+                        "id": "plan",
+                        "type": "agent",
+                        "agent_id": team["agent_id"],
+                        "input": "Plan after {{ steps.check.output.decision }}",
+                    },
+                ]
+            },
+        },
+    )
+    workflow_id = created.json()["id"]
+    await client.post(f"/api/v1/workflows/{workflow_id}/activate", headers=_h(team["owner"]))
+    title = _canary("plan")
+    provider.queue(calls(("create_task", {"title": title})), text("Planned."))
+    run_id = await _to_publication(
+        client, session_factory, runtime, team, workflow_id, "unused", sources, truncated
+    )
+    body = await _run(client, team["alice"], run_id)
+    return _step(body, "plan")["agent_run_id"], title
+
+
+@pytest.mark.parametrize("variant", ["null", "empty", "truncated", "malformed", "missing"])
+async def test_unknown_provenance_gates_an_agent_publication(
+    client, env, provider, runtime, session_factory, variant
+):
+    team = await _team(client, session_factory, f"agent-unknown-{variant}")
+    await _enable(client, team["owner"])
+    if variant == "empty":
+        sources, truncated = [], False
+    else:
+        sources, truncated = await _unknown_sources(
+            variant, client, provider, session_factory, team
+        )
+    agent_run_id, title = await _agent_step_after(
+        client, session_factory, runtime, provider, team, sources, truncated
+    )
+    [approval] = await _approvals(session_factory, agent_run_id)
+    assert approval.tool_name == "create_task" and approval.status == "PENDING"
+    assert approval.restricted_publication is True
+    assert await _tasks(session_factory, title) == []
+
+
+async def test_organization_readable_upstream_does_not_gate_an_agent_publication(
+    client, env, provider, runtime, session_factory
+):
+    team = await _team(client, session_factory, "agent-open")
+    await _enable(client, team["owner"])
+    handbook = await _document(session_factory, team["org"], "Handbook", restricted=False)
+    agent_run_id, title = await _agent_step_after(
+        client, session_factory, runtime, provider, team, [_doc_ref(handbook)], False
+    )
+    assert await _approvals(session_factory, agent_run_id) == []
+    assert len(await _tasks(session_factory, title)) == 1
+
+
+async def test_setting_off_leaves_an_existing_approval_unmarked(
+    client, env, provider, session_factory
+):
+    team = await _team(client, session_factory, "off-marker")
+    args = {"recipient_email": "max-off-marker@acme.example.com", "title": "x"}
+    provider.queue(calls(("notify_member", args)))
+    result = await _execute(client, team["alice"], team["agent_id"])
+    assert result["status"] == "awaiting_approval", result
+    [approval] = await _approvals(session_factory, result["run_id"])
+    assert approval.restricted_publication is False
+
+
+async def test_a_reused_approval_resumes_and_publishes_once(client, env, provider, session_factory):
+    """notify_member already requires approval: one request, marked, and approving
+    it delivers the notification exactly once."""
+    team = await _team(client, session_factory, "reuse-once")
+    await _enable(client, team["owner"])
+    secret = _canary("secret")
+    provider.queue(
+        calls(
+            (
+                "notify_member",
+                {"recipient_email": "max-reuse-once@acme.example.com", "title": secret},
+            )
+        )
+    )
+    result = await _execute(client, team["mia"], team["agent_id"])
+    approval_id = _gated(result)
+    [approval] = await _approvals(session_factory, result["run_id"])
+    assert approval.restricted_publication is True
+    listed = await client.get(f"/api/v1/approvals/{approval_id}", headers=_h(team["mia"]))
+    assert listed.json()["restricted_publication"] is True
+    provider.queue(text("Sent."))
+    approved = await _approve(client, team["mia"], approval_id)
+    assert approved.status_code == 200, approved.text
+    assert (await _approve(client, team["mia"], approval_id)).status_code == 409
+    assert len(await _approvals(session_factory, result["run_id"])) == 1
+    inbox = await client.get("/api/v1/notifications", headers=_h(team["max"]))
+    assert inbox.text.count(secret) == 1
