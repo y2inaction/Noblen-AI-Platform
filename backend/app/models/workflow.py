@@ -16,6 +16,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     DateTime,
     ForeignKey,
     Integer,
@@ -23,6 +24,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    false,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -107,6 +109,13 @@ class WorkflowRun(UUIDMixin, TimestampMixin, TenantMixin, Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Provenance (M8, ADR-0037): the union of its steps' sources plus external input.
+    # NULL means unknown (recorded before M8) and fails closed.
+    sources: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    sources_truncated: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
+    acting_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
 
 class WorkflowStepRun(UUIDMixin, TimestampMixin, TenantMixin, Base):
@@ -134,3 +143,9 @@ class WorkflowStepRun(UUIDMixin, TimestampMixin, TenantMixin, Base):
     decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Provenance (M8, ADR-0037): this step's sources, inherited transitively from
+    # the steps it read. NULL means unknown (recorded before M8) and fails closed.
+    sources: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    sources_truncated: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )

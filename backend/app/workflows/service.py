@@ -25,6 +25,7 @@ from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents import provenance
 from app.agents.tools.registry import tool_registry
 from app.core.config import settings
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
@@ -403,6 +404,11 @@ async def queue_run(
         current_step=definition.steps[0].id,
         initiated_by=initiated_by,
         depth=depth,
+        # Provenance (M8): the run's own input (manual, webhook or event payload)
+        # is a source of whatever it produces. Its content is never recorded.
+        sources=[provenance.external_input_ref()] if input else [],
+        sources_truncated=False,
+        acting_role=await provenance.acting_role(db, workflow.organization_id, initiated_by),
     )
     db.add(run)
     await db.flush()

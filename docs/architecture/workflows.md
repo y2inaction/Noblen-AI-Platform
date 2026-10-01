@@ -106,12 +106,14 @@ organization.
   arguments, a failed tool result, a missing reference, an agent escalation. After
   that, `on_failure` applies. `escalate` ends the run `ESCALATED` and notifies
   operators (`agent:operate`) and the person it acts for.
-- **Visibility** (ADR-0035). A run's metadata (status, steps and their statuses,
-  timings, error codes, initiator) is visible with `workflow:view`. Its content is
-  visible only to the person the run acts for. Content means `input`, `context`,
-  step outputs, and error and decision-note text. Other members, admins included,
-  get those fields as `null` with `content_withheld: true`. Approvers see the
-  approval requests they decide.
+- **Visibility** (ADR-0035, ADR-0037). A run's metadata (status, steps and their
+  statuses, timings, error codes, initiator) is visible with `workflow:view`. Its
+  content is visible to the person the run acts for, and to a member who can read
+  every source the run recorded now. Steps inherit the provenance of the upstream
+  values they consume, and the run accumulates its steps'. Content means `input`,
+  `context`, step outputs, and error and decision-note text. Everyone else gets
+  those fields as `null` with `content_withheld: true` and a
+  `content_withheld_reason`. Approvers see the approval requests they decide.
 - **Crash recovery.** A run left `RUNNING` by a crashed worker is re-queued when
   it stopped between steps or during a condition or approval step. If it stopped
   mid-agent or mid-tool, it is escalated, never re-executed (ADR-0033).

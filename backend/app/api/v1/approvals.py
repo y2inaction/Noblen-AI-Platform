@@ -128,9 +128,11 @@ async def _decide(
         for key in ("conversation_id", "agent_id", "agent_version_id", "approval_id", "run_id"):
             if execution.get(key) is not None:
                 execution[key] = str(execution[key])
-        # The resumed run acts for its initiator; the approver sees its status,
-        # not the agent's answer (ADR-0035).
-        execution = present_execution(execution, approval.requested_by, ctx.viewer)
+        # The resumed run acts for its initiator; the approver sees its status, and
+        # the agent's answer only under the run rule (ADR-0035, M8).
+        execution = await present_execution(
+            db, execution, ctx.organization_id, approval.requested_by, ctx.viewer
+        )
     await db.commit()
     await db.refresh(approval)
     return ApprovalDecisionOut(approval=ApprovalOut.model_validate(approval), execution=execution)

@@ -1,6 +1,8 @@
 # ADR-0036 — One data-visibility model for agents, runs, workflows and their outputs
 
-**Status:** Proposed (security review, 2026-09). Not implemented.
+**Status:** Accepted (2026-09, Milestone 8). The participant level for run content is
+implemented by ADR-0035. The provenance-based widening is implemented by Milestone 8
+(ADR-0037; see `milestone-8-provenance.md`).
 **Relates to:** ADR-0034 (RLS: tenant level), ADR-0035 (run content), ADR-0037
 (provenance), M3 knowledge ACLs, ADR-0029 memory scopes.
 

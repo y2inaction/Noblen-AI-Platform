@@ -72,6 +72,9 @@ export interface AgentTemplate {
   version: string;
 }
 
+/** Why the server withheld a run's content (M8): never which source. */
+export type WithheldReason = "restricted_sources" | "unknown_provenance";
+
 export interface Run {
   id: string;
   agent_id: string;
@@ -90,8 +93,10 @@ export interface Run {
   started_at: string | null;
   completed_at: string | null;
   created_at: string;
-  /** True when the server withheld this run's content from you (ADR-0035). */
+  /** True when the server withheld this run's content from you (ADR-0035, M8). */
   content_withheld: boolean;
+  /** Why it was withheld; null when the content is shown. */
+  content_withheld_reason: WithheldReason | null;
 }
 
 export interface RunStep {
@@ -178,6 +183,7 @@ export interface WorkflowRun {
   finished_at: string | null;
   created_at: string;
   content_withheld: boolean;
+  content_withheld_reason: WithheldReason | null;
 }
 
 export interface WorkflowRunDetail extends WorkflowRun {

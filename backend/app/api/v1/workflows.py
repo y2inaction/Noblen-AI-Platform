@@ -17,7 +17,11 @@ from app.db.session import get_db
 from app.models.enums import WorkflowRunStatus, WorkflowStatus
 from app.models.organization import Organization
 from app.rbac.permissions import Permission, role_has_permission
-from app.rbac.visibility import present_workflow_run, present_workflow_run_detail
+from app.rbac.visibility import (
+    present_workflow_run,
+    present_workflow_run_detail,
+    present_workflow_runs,
+)
 from app.schemas.workflow import (
     WorkflowActivate,
     WorkflowCreate,
@@ -239,7 +243,7 @@ async def start_run(
     )
     await db.commit()
     await db.refresh(run)
-    return present_workflow_run(run, ctx.viewer)
+    return await present_workflow_run(db, run, ctx.viewer)
 
 
 @router.get("/workflow-runs", response_model=WorkflowRunListOut)
@@ -259,9 +263,7 @@ async def list_runs(
         limit=limit,
         offset=offset,
     )
-    return WorkflowRunListOut(
-        items=[present_workflow_run(r, ctx.viewer) for r in items], total=total
-    )
+    return WorkflowRunListOut(items=await present_workflow_runs(db, items, ctx.viewer), total=total)
 
 
 @router.get("/workflow-runs/{run_id}", response_model=WorkflowRunDetail)
@@ -270,10 +272,12 @@ async def get_run(
     ctx: TenantContext = Depends(require_permission(Permission.WORKFLOW_VIEW)),
     db: AsyncSession = Depends(get_db),
 ) -> WorkflowRunDetail:
-    """Metadata for `workflow:view`; content only for the person the run acts for,
-    plus the approval requests an approver decides (ADR-0035)."""
+    """Metadata for `workflow:view`. Content for the person the run acts for, or
+    for a viewer who can read every recorded source now (M8), plus the approval
+    requests an approver decides (ADR-0035)."""
     run = await service.get_run(db, ctx.organization_id, run_id)
-    return present_workflow_run_detail(run, await service.step_runs(db, run), ctx.viewer)
+    steps = await service.step_runs(db, run)
+    return await present_workflow_run_detail(db, run, steps, ctx.viewer)
 
 
 async def _decide(
@@ -298,7 +302,7 @@ async def _decide(
     )
     await db.commit()
     await db.refresh(run)
-    return present_workflow_run(run, ctx.viewer)
+    return await present_workflow_run(db, run, ctx.viewer)
 
 
 @router.post("/workflow-runs/{run_id}/approve", response_model=WorkflowRunOut)
@@ -331,4 +335,4 @@ async def cancel_run(
     await _audit(db, ctx, "workflow.run_cancelled", "workflow_run", run.id)
     await db.commit()
     await db.refresh(run)
-    return present_workflow_run(run, ctx.viewer)
+    return await present_workflow_run(db, run, ctx.viewer)

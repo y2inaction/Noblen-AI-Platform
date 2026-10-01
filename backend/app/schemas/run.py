@@ -52,9 +52,11 @@ class RunOut(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
     created_at: datetime
-    # ADR-0035: escalation_reason and step errors are withheld from everyone but
-    # the person the run acts for.
+    # ADR-0035, M8: escalation_reason and tool errors are shown to the person the
+    # run acts for, or to a viewer who can currently read every recorded source.
     content_withheld: bool = False
+    # Why content is withheld: "restricted_sources" or "unknown_provenance".
+    content_withheld_reason: str | None = None
 
 
 class RunDetailOut(RunOut):

@@ -28,6 +28,7 @@ from typing import Any
 from sqlalchemy import ColumnElement, and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents import provenance
 from app.core.config import settings
 from app.core.exceptions import NotFoundError, ValidationError
 from app.models.agent import Agent
@@ -429,6 +430,8 @@ class AgentMemory:
     agent_id: uuid.UUID
     run_id: uuid.UUID | None
     user_id: uuid.UUID | None
+    # The run's provenance collector (M8): memories returned to the run are recorded.
+    provenance: Any = None
 
     async def remember(self, scope: str, content: str, category: str | None) -> tuple[Memory, bool]:
         if scope == USER and self.user_id is None:
@@ -451,7 +454,7 @@ class AgentMemory:
     async def recall(
         self, *, text: str | None, scope: str | None, limit: int
     ) -> tuple[list[Memory], int]:
-        return await _query(
+        memories, total = await _query(
             self.db,
             self.organization_id,
             _visible_to_run(self.user_id, self.agent_id),
@@ -460,6 +463,9 @@ class AgentMemory:
             text=text,
             limit=limit,
         )
+        for memory in memories:
+            provenance.record(self.provenance, provenance.memory_ref(memory.id, memory.scope))
+        return memories, total
 
     async def forget(self, memory_id: uuid.UUID) -> None:
         """Agents may only forget the initiator's own USER memories."""

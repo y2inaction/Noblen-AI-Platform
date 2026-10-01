@@ -1,6 +1,8 @@
 # ADR-0037 — Permission propagation through provenance references
 
-**Status:** Proposed (security review, 2026-09). Not implemented. Follows ADR-0035 and ADR-0036.
+**Status:** Implemented (Milestone 8, 2026-10). Follows ADR-0035 and ADR-0036.
+Implementation contract and validation record:
+[`milestone-8-provenance.md`](milestone-8-provenance.md).
 
 ## Context
 
@@ -20,7 +22,7 @@ knows what it was derived from, so the read side (ADR-0035) can only choose betw
 "everyone" (today's leak) and "only the participant" (the ADR-0035 fix). What is
 missing is a record of which protected things a piece of content came from.
 
-## Decision (proposed)
+## Decision
 
 ### 1. Record references, never copies
 
@@ -129,3 +131,39 @@ not part of the first change.
   per content read by a non-participant.
 - Transitive recording is conservative. A step that *reads* a restricted output but
   doesn't *use* it is still marked. Over-restriction is the chosen failure mode.
+
+## Implementation (Milestone 8)
+
+Implemented on PR #6 in steps M8.1–M8.10. The contract,
+[`milestone-8-provenance.md`](milestone-8-provenance.md), is authoritative. These
+decisions were settled during implementation:
+
+- **Reference-only provenance.** `sources` holds `{type, id}` references (memories
+  also carry their scope), at most 500 per run, never text. The types are
+  `knowledge_document`, `knowledge_table`, `memory`, `integration`, `conversation`,
+  `external_input`, `agent_run` and `workflow_step`. Only server capture points write
+  them. No API input or model output can.
+- **Conversation provenance.** An agent run started through the agent API records the
+  conversation it reads (the person's message and history), because conversations are
+  private to their participants. The workflow engine's per-step conversation holds only
+  the rendered step input. It is not recorded; the step's consumed provenance is
+  inherited instead.
+- **Current-time authorization governs visibility.** Run content is shown to the run's
+  person, or to a viewer who can read every recorded source *now*, under their current
+  permissions. A later grant reveals it and a revocation hides it again, without a
+  re-run. Sources are resolved in bulk with the existing predicates, and the query count
+  does not depend on the number of references. Admins and superusers get no bypass;
+  `knowledge:read_all` applies to knowledge sources only.
+- **Fail closed.** `NULL` (before M8), **empty**, truncated, malformed, missing,
+  deleted, cross-tenant, cyclic or too-deep provenance is withheld from everyone but
+  the run's person. An empty list proves nothing and never widens visibility.
+- **Two withholding reasons only.** `content_withheld_reason` is `restricted_sources`
+  or `unknown_provenance`. The response never names the source that denied access.
+- **Publication attribution only.** `agent.tool_executed` and `workflow.tool_executed`
+  audit events record `source_counts`, `sources_truncated`, `acting_role` and
+  `restricted`. `restricted` is attribution: it changes no visibility and blocks
+  nothing.
+- **Deferred.** The restricted-publication approval gate
+  (`require_approval_to_publish_restricted`) is Milestone 9. No `workflow_run` foreign
+  key was added to tasks: tasks created by a workflow tool step are attributed through
+  the audit trail. Row-level security (ADR-0034) is reviewed separately.

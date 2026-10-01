@@ -31,6 +31,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents import conversations as conversation_service
+from app.agents import provenance
+from app.agents.provenance import ProvenanceCollector
 from app.agents.runtime import AgentRuntime
 from app.agents.tools.base import ToolContext
 from app.agents.tools.registry import ToolRegistry, tool_registry, validate_arguments
@@ -52,6 +54,7 @@ from app.models.organization import Organization
 from app.models.run import AgentRun
 from app.models.workflow import Workflow, WorkflowRun, WorkflowStepRun, WorkflowVersion
 from app.rbac.permissions import Permission, role_has_permission
+from app.rbac.visibility import publication_attribution
 from app.services import work_service
 from app.services.audit_service import record_audit
 from app.services.work_service import AgentWorkspace
@@ -65,7 +68,7 @@ from app.workflows.definition import (
     WorkflowDefinition,
     parse,
 )
-from app.workflows.templating import TemplateError, render
+from app.workflows.templating import TemplateError, references, render
 
 logger = get_logger("workflows.engine")
 
@@ -85,6 +88,39 @@ class _Outcome:
     goto: str | None = None  # explicit next step for branches; None = the default
     error: str | None = None
     retryable: bool = False
+
+
+def _templates(step: Any) -> list[Any]:
+    """The values a step renders from the run context."""
+    if isinstance(step, ConditionStep):
+        return [step.left, step.right]
+    if isinstance(step, ApprovalStep):
+        return [step.title, step.details]
+    if isinstance(step, ToolStep):
+        return [step.arguments]
+    if isinstance(step, AgentStep):
+        return [step.input]
+    return []
+
+
+def _merge_into(row: Any, sources: list[Any] | None, truncated: bool) -> None:
+    """Union `sources` into a row's provenance. Deterministic (existing order
+    first), bounded, and monotone: unknown or truncated input truncates the row,
+    and a truncated row stays truncated."""
+    collector = ProvenanceCollector()
+    collector.inherit(row.sources, row.sources_truncated)
+    collector.inherit(sources, truncated)
+    row.sources, row.sources_truncated = collector.snapshot()
+
+
+def _take_agent_provenance(step_run: WorkflowStepRun, agent_run: AgentRun | None) -> None:
+    """An agent step's sources are its agent run's sources (M8). An agent run with
+    unknown provenance leaves the step unknown too (truncated, fails closed)."""
+    if agent_run is None:
+        return
+    collector = ProvenanceCollector()
+    collector.inherit(agent_run.sources, agent_run.sources_truncated)
+    step_run.sources, step_run.sources_truncated = collector.snapshot()
 
 
 def _done(output: dict[str, Any] | None = None, goto: str | None = None) -> _Outcome:
@@ -165,7 +201,61 @@ class WorkflowEngine:
             outcome = await self._execute(db, run, workflow, step, step_run)
         except TemplateError as exc:
             outcome = _fail(str(exc))
+        await self._propagate(db, run, step, step_run)
         await self._apply(db, run, workflow, definition, step, step_run, outcome)
+
+    # ------------------------------------------------------------- provenance
+    async def _propagate(
+        self, db: AsyncSession, run: WorkflowRun, step: Any, step_run: WorkflowStepRun
+    ) -> None:
+        """Transitive provenance (M8.6).
+
+        A step's content derives from what it observed itself (M8.5 capture) and
+        from every upstream value its templates consume: `steps.<id>.*` inherits
+        that step's latest earlier provenance, and `input.*` is the run's external
+        input. An agent step passes this on to its agent run, whose content was
+        produced from the rendered input. The workflow run is the union of its
+        input and all its steps. Unknown or truncated provenance anywhere upstream
+        makes every consumer truncated; nothing is ever reset to empty.
+        """
+        inherited, inherited_truncated = await self._consumed(db, run, step, step_run)
+
+        if step_run.agent_run_id is not None:
+            agent_run = await db.get(AgentRun, step_run.agent_run_id)
+            if agent_run is not None:
+                _merge_into(agent_run, inherited, inherited_truncated)
+        _merge_into(step_run, inherited, inherited_truncated)
+        _merge_into(run, step_run.sources, step_run.sources_truncated)
+
+    async def _consumed(
+        self, db: AsyncSession, run: WorkflowRun, step: Any, step_run: WorkflowStepRun
+    ) -> tuple[list[dict[str, str]], bool]:
+        """The provenance of the upstream values this step's templates consume."""
+        consumed = ProvenanceCollector()
+        for path in references(_templates(step)):
+            root, _, rest = path.partition(".")
+            if root == "input" and run.input:
+                consumed.add(provenance.external_input_ref())
+            elif root == "steps":
+                upstream = await self._latest_step_run(db, run, rest.split(".", 1)[0], step_run)
+                if upstream is not None:
+                    consumed.inherit(upstream.sources, upstream.sources_truncated)
+        return consumed.snapshot()
+
+    @staticmethod
+    async def _latest_step_run(
+        db: AsyncSession, run: WorkflowRun, step_id: str, current: WorkflowStepRun
+    ) -> WorkflowStepRun | None:
+        """The attempt of `step_id` whose output is in the run context: the most
+        recent one before the current step."""
+        stmt = select(WorkflowStepRun).where(
+            WorkflowStepRun.run_id == run.id, WorkflowStepRun.step_id == step_id
+        )
+        if current.sequence is not None:
+            stmt = stmt.where(WorkflowStepRun.sequence < current.sequence)
+        return (
+            await db.execute(stmt.order_by(WorkflowStepRun.sequence.desc()).limit(1))
+        ).scalar_one_or_none()
 
     def _new_step_run(self, db: AsyncSession, run: WorkflowRun, step: Any) -> WorkflowStepRun:
         step_run = WorkflowStepRun(
@@ -177,6 +267,9 @@ class WorkflowEngine:
             attempt=run.current_attempt,
             status=WorkflowStepStatus.RUNNING.value,
             started_at=_now(),
+            # Provenance (M8): filled by the step's capture points below.
+            sources=[],
+            sources_truncated=False,
         )
         db.add(step_run)
         return step_run
@@ -335,6 +428,7 @@ class WorkflowEngine:
             if decided.kind != "done":
                 return decided
 
+        collector = ProvenanceCollector()
         context = ToolContext(
             organization_id=run.organization_id,
             user_id=run.initiated_by,
@@ -349,16 +443,28 @@ class WorkflowEngine:
                 user_id=run.initiated_by,
             ),
             integrations=IntegrationGateway(
-                db=db, organization_id=run.organization_id, user_id=run.initiated_by
+                db=db,
+                organization_id=run.organization_id,
+                user_id=run.initiated_by,
+                provenance=collector,
             ),
+            provenance=collector,
         )
         try:
             result = await handler.execute(context, arguments)
         except Exception as exc:  # noqa: BLE001 - never leak internals
             return _fail(f"Tool '{step.tool}' failed ({type(exc).__name__}).", retryable=True)
+        finally:
+            # Provenance (M8): what this tool step itself observed (connections).
+            step_run.sources, step_run.sources_truncated = collector.snapshot()
         if not result.ok:
             return _fail(result.error or f"Tool '{step.tool}' failed.")
         if handler.risk_level != ToolRiskLevel.LOW.value:
+            # Publication attribution (M8.8): the tool published content derived
+            # from what this step consumed upstream and what it observed itself.
+            published = ProvenanceCollector()
+            published.inherit(*await self._consumed(db, run, step, step_run))
+            published.inherit(step_run.sources, step_run.sources_truncated)
             await record_audit(
                 db,
                 action="workflow.tool_executed",
@@ -366,7 +472,12 @@ class WorkflowEngine:
                 organization_id=run.organization_id,
                 target_type="workflow_run",
                 target_id=str(run.id),
-                metadata={"step": step.id, "tool": step.tool},
+                metadata={
+                    "step": step.id,
+                    "tool": step.tool,
+                    "acting_role": run.acting_role,
+                    **await publication_attribution(db, run.organization_id, *published.snapshot()),
+                },
             )
         return _done(result.output)
 
@@ -379,7 +490,7 @@ class WorkflowEngine:
         step_run: WorkflowStepRun,
     ) -> _Outcome:
         if step_run.agent_run_id is not None:
-            return await self._agent_result(db, step_run.agent_run_id)
+            return await self._agent_result(db, step_run.agent_run_id, step_run)
         assert run.initiated_by is not None
         message = str(render(step.input, self._context(run)))
         conversation = await conversation_service.create_conversation(
@@ -397,6 +508,10 @@ class WorkflowEngine:
                 agent_id=step.agent_id,
                 conversation_id=conversation.id,
                 input_message=message,
+                # A fresh conversation holding only the rendered step input: its
+                # provenance is what the step consumed, which the run starts with.
+                conversation_is_source=False,
+                inherited=await self._consumed(db, run, step, step_run),
             )
         except AIError as exc:
             return _fail(
@@ -405,6 +520,7 @@ class WorkflowEngine:
         except AppError as exc:
             return _fail(exc.message)
         step_run.agent_run_id = result.run_id
+        _take_agent_provenance(step_run, await db.get(AgentRun, result.run_id))
         if result.status == "completed":
             return _done(
                 {
@@ -416,10 +532,13 @@ class WorkflowEngine:
             return _Outcome("wait")
         return _fail(f"The agent escalated: {result.escalation_reason or 'no reason given'}")
 
-    async def _agent_result(self, db: AsyncSession, agent_run_id: uuid.UUID) -> _Outcome:
+    async def _agent_result(
+        self, db: AsyncSession, agent_run_id: uuid.UUID, step_run: WorkflowStepRun
+    ) -> _Outcome:
         agent_run = await db.get(AgentRun, agent_run_id)
         if agent_run is None:
             return _fail("The agent run no longer exists.")
+        _take_agent_provenance(step_run, agent_run)
         if agent_run.status not in _AGENT_TERMINAL:
             return _Outcome("wait")
         if agent_run.status == RunStatus.COMPLETED.value and agent_run.conversation_id:

@@ -36,9 +36,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents import approvals as approval_service
 from app.agents import conversations as conversation_service
+from app.agents import provenance
 from app.agents import registry as agent_registry
 from app.agents.errors import AgentInactive
 from app.agents.memory import load_run_context
+from app.agents.provenance import ProvenanceCollector
 from app.agents.tools.base import ToolContext
 from app.agents.tools.registry import ToolRegistry, tool_registry, validate_arguments
 from app.ai.errors import AIError
@@ -67,6 +69,7 @@ from app.models.run import AgentRun, AgentRunStep
 from app.models.tool import AgentTool, Tool
 from app.models.user import User
 from app.rbac.permissions import Permission, role_has_permission
+from app.rbac.visibility import publication_attribution
 from app.services import ai_usage_service, memory_service, work_service
 from app.services.audit_service import record_audit
 from app.services.memory_service import AgentMemory
@@ -194,6 +197,7 @@ class AgentRuntime:
         organization_id: uuid.UUID,
         agent_id: uuid.UUID,
         user_id: uuid.UUID | None,
+        collector: ProvenanceCollector | None = None,
     ):
         """Return an async, tenant- AND agent-scoped knowledge-search capability.
 
@@ -224,6 +228,9 @@ class AgentRuntime:
             )
             if not results:
                 return {**empty, "message": "No relevant knowledge found."}
+            # Provenance (M8): the documents actually returned, after the ACL filter.
+            for r in results:
+                provenance.record(collector, provenance.document_ref(r.document_id))
             return {
                 "count": len(results),
                 "results": [
@@ -298,6 +305,11 @@ class AgentRuntime:
     async def _build_state(
         self, db: AsyncSession, run: AgentRun, agent: Agent, version: AgentVersion
     ) -> _RunState:
+        # Provenance (M8): continue what this run already recorded. A run with
+        # unknown provenance (NULL, pre-M8) stays unknown: the collector is
+        # truncated and fails closed.
+        collector = ProvenanceCollector()
+        collector.inherit(run.sources, run.sources_truncated)
         context = ToolContext(
             organization_id=run.organization_id,
             user_id=run.initiated_by,
@@ -305,7 +317,7 @@ class AgentRuntime:
             conversation_id=run.conversation_id,
             org_settings=await self._org_settings(db, run.organization_id),
             knowledge_search=self._build_knowledge_search(
-                db, run.organization_id, agent.id, run.initiated_by
+                db, run.organization_id, agent.id, run.initiated_by, collector
             ),
             workspace=AgentWorkspace(
                 db=db,
@@ -319,6 +331,7 @@ class AgentRuntime:
                 organization_id=run.organization_id,
                 agent_id=agent.id,
                 user_id=run.initiated_by,
+                provenance=collector,
             ),
             memory=AgentMemory(
                 db=db,
@@ -326,6 +339,7 @@ class AgentRuntime:
                 agent_id=agent.id,
                 run_id=run.id,
                 user_id=run.initiated_by,
+                provenance=collector,
             ),
             integrations=IntegrationGateway(
                 db=db,
@@ -333,7 +347,9 @@ class AgentRuntime:
                 user_id=run.initiated_by,
                 agent_id=agent.id,
                 run_id=run.id,
+                provenance=collector,
             ),
+            provenance=collector,
         )
         bindings, specs = await self._load_tools(db, run.organization_id, agent.id)
         state = _RunState(
@@ -341,7 +357,14 @@ class AgentRuntime:
         )
         if self._memory_mode(state) == MemoryMode.PERSISTENT.value:
             state.memory_context = await self._load_long_term_memory(db, state)
+        self._save_provenance(state)
         return state
+
+    @staticmethod
+    def _save_provenance(state: _RunState) -> None:
+        """Copy the run's collected provenance onto its row (flushed with the run)."""
+        collector: ProvenanceCollector = state.context.provenance
+        state.run.sources, state.run.sources_truncated = collector.snapshot()
 
     @staticmethod
     def _memory_mode(state: _RunState) -> str:
@@ -352,6 +375,10 @@ class AgentRuntime:
         memories = await memory_service.context_for_run(
             db, state.run.organization_id, state.run.initiated_by, state.agent.id
         )
+        # Provenance (M8): every memory injected into the system prompt.
+        for items in memories.values():
+            for memory in items:
+                state.context.provenance.add(provenance.memory_ref(memory.id, memory.scope))
         counts = {scope.lower(): len(items) for scope, items in memories.items()}
         if any(counts.values()):
             # The trace records how much was loaded, never the content.
@@ -382,8 +409,19 @@ class AgentRuntime:
         input_message: str,
         version_id: uuid.UUID | None = None,
         background: bool = False,
+        conversation_is_source: bool = True,
+        inherited: tuple[list[dict[str, str]] | None, bool] | None = None,
     ) -> RuntimeResult:
-        """Admit a task and run it now, or queue it for a worker (`background`)."""
+        """Admit a task and run it now, or queue it for a worker (`background`).
+
+        The run reads its conversation (the person's message and, per the memory
+        mode, earlier turns), which is private to the conversation's participants,
+        so the conversation is recorded as a source (M8). The workflow engine
+        passes `conversation_is_source=False` for the conversation it creates for
+        one step: that holds only the rendered step input, whose provenance the
+        engine records itself, and passes it as `inherited` so the run starts
+        from it (fail closed: unknown or truncated input truncates the run).
+        """
         if len(input_message) > settings.AGENT_MAX_INPUT_CHARS:
             from app.core.exceptions import ValidationError
 
@@ -412,6 +450,12 @@ class AgentRuntime:
             content=input_message,
             created_by=user_id,
         )
+        initial = ProvenanceCollector()
+        if conversation_is_source:
+            initial.add(provenance.conversation_ref(conversation_id))
+        if inherited is not None:
+            initial.inherit(*inherited)
+        sources, truncated = initial.snapshot()
         run = AgentRun(
             organization_id=organization_id,
             agent_id=agent_id,
@@ -421,6 +465,11 @@ class AgentRuntime:
             status=RunStatus.QUEUED.value if background else RunStatus.RUNNING.value,
             context_start_sequence=user_message.sequence,
             started_at=None if background else _now(),
+            # Provenance (M8): the conversation or the step input it holds, plus
+            # what the capabilities record.
+            sources=sources,
+            sources_truncated=truncated,
+            acting_role=await provenance.acting_role(db, organization_id, user_id),
         )
         db.add(run)
         await db.flush()
@@ -827,6 +876,7 @@ class AgentRuntime:
             logger.exception("agent_tool_crashed", tool_name=tool_call.name)
             output = {"error": f"The tool failed unexpectedly ({type(exc).__name__})."}
             ok = False
+        self._save_provenance(state)
         await self._add_step(
             db,
             run,
@@ -856,6 +906,12 @@ class AgentRuntime:
                     "risk_level": binding.handler.risk_level,
                     "approved": pre_approved,
                     "ok": ok,
+                    # Publication attribution (M8.8): what the run's output derives
+                    # from, by reference counts only.
+                    "acting_role": run.acting_role,
+                    **await publication_attribution(
+                        db, run.organization_id, run.sources, run.sources_truncated
+                    ),
                 },
             )
         logger.info("agent_tool_executed", tool_name=tool_call.name, ok=ok)
@@ -1076,6 +1132,7 @@ class AgentRuntime:
         run = state.run
         run.status = status.value
         run.completed_at = _now()
+        self._save_provenance(state)
         await record_audit(
             db,
             action=f"agent.run_{status.value.lower()}",

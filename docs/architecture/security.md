@@ -99,12 +99,16 @@ SQL (`readable_by`). Other members, admins included, get 404. Being in the same
 organization is not enough. Run traces remain organization-visible because they
 never contain content.
 
-Run content is private to the person the run acts for (ADR-0035). A workflow or
-agent run reads with one person's authority, so what it was given and produced can
-quote their private memories and restricted knowledge. Other members, admins
-included, see the run's metadata: status, steps, timings, error codes, cost, and who
+Run content follows its sources (ADR-0035, ADR-0037). A workflow or agent run reads
+with one person's authority, so what it was given and produced can quote their
+private memories and restricted knowledge. The run records references to those
+sources (never their text). Its content is visible to the person it acts for, and to
+another member only if that member can read every recorded source now. Missing,
+empty or truncated provenance fails closed, and admins get no bypass. Everyone else
+sees the run's metadata: status, steps, timings, error codes, cost, and who
 initiated it. The content fields (`input`, `context`, step outputs, escalation
-reasons, and tool error text) are returned as `null` with `content_withheld: true`.
+reasons, and tool error text) are returned as `null` with `content_withheld: true`
+and a `content_withheld_reason` (`restricted_sources` or `unknown_provenance`).
 Approvers see the requests they decide. The rule is enforced in
 `app/rbac/visibility.py`, not in the UI. The same file also covers the
 approval-decision response, the operations overview and notification bodies.

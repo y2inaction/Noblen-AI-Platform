@@ -117,7 +117,7 @@ class WorkflowRunOut(BaseModel):
     status: str
     trigger_type: str
     trigger_detail: dict[str, Any]
-    # Content (ADR-0035): None when withheld from someone other than the run's person.
+    # Content (ADR-0035, M8): None when withheld (see content_withheld_reason).
     input: dict[str, Any] | None
     current_step: str | None
     current_attempt: int
@@ -131,6 +131,8 @@ class WorkflowRunOut(BaseModel):
     finished_at: datetime | None
     created_at: datetime
     content_withheld: bool = False
+    # Why content is withheld: "restricted_sources" or "unknown_provenance".
+    content_withheld_reason: str | None = None
 
 
 class WorkflowRunDetail(WorkflowRunOut):

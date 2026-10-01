@@ -67,10 +67,10 @@ The same restricted document (readable by A only, canary inside) is used in ever
 | **Workflow run by A (agent step) → `GET /workflow-runs/{id}`** | B (VIEWER, MEMBER, MANAGER, ADMIN) | the canary is absent; `content_withheld: true` — *the ADR-0035 regression test (exists)* |
 | Same, viewer = A | A | the canary is present *(exists)* |
 | **Workflow step output next to an approval step** | approver C | C sees only the approval request, not the rest of the context *(exists)*. Refined during implementation: approvers keep the notification body, since they may see the request. |
-| **Tool step (`create_task`) from A's restricted output** | B | the task is visible (publication), with `source_run_id` set and the audit event marked `restricted: true` |
+| **Tool step (`create_task`) from A's restricted output** | B | the task is visible (publication); a workflow task is attributed through the audit event (`restricted: true`, `source_counts`), with no new foreign key *(exists, M8.8)* |
 | **Run trace steps** | B | argument keys only, never values *(exists)* |
-| After ADR-0037: B is granted the document | B | the workflow output becomes visible (derived visibility) |
-| After ADR-0037: the document is deleted | B | withheld (fail closed); A still sees it |
+| After ADR-0037: B is granted the document | B | the output becomes visible (derived visibility) *(exists, M8.7)* |
+| After ADR-0037: the document is deleted | B | withheld (`unknown_provenance`); A still sees it *(exists, M8.7)* |
 
 ## 5. Memory isolation
 

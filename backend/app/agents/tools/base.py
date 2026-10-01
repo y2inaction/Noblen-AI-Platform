@@ -37,6 +37,9 @@ class ToolContext:
     # Run-bound access to the organization's integrations
     # (`app.integrations.service.IntegrationGateway`, M6). Never exposes secrets.
     integrations: Any = None
+    # The run's provenance collector (`app.agents.provenance`, M8). Written only
+    # by the capabilities above, never by tool arguments or model output.
+    provenance: Any = None
 
 
 @dataclass
