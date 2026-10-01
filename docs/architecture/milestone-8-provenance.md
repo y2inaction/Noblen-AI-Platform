@@ -1,7 +1,8 @@
 # Milestone 8: Permission propagation and provenance (implementation contract)
 
-**Status:** In progress. It implements ADR-0037, which **stays Proposed until every
-gate in §9 passes**, and builds on ADR-0035 (implemented) and ADR-0036 (accepted).
+**Status:** Implemented (M8.1–M8.10, PR #6). It implements ADR-0037, now
+**Implemented** after every gate in §9 passed (§11), and builds on ADR-0035
+(implemented) and ADR-0036 (accepted).
 RLS (ADR-0034) is out of scope. It is reviewed separately after M8 and is not
 started automatically.
 
@@ -227,3 +228,42 @@ remains a decision made at read time, against the viewer's *current* permissions
 - If any existing test has to change, stop and explain why before changing it.
 - The merge is a normal non-squash merge commit, "Merge PR #N: Milestone 8 —
   Permission Propagation & Provenance", and only after approval.
+
+## 11. Validation record (M8.10)
+
+Run on the M8.9 head `6b0264e`, before the documentation-only M8.10 commit.
+
+| Gate (§9) | Result |
+|---|---|
+| ruff, format, mypy | clean |
+| Full SQLite suite | 312 passed, 20 skipped |
+| Full PostgreSQL + pgvector suite | 332 passed |
+| Migration `810da20ca5ee` upgrade → downgrade → upgrade (PostgreSQL) | passed; the eight provenance columns are added, removed and re-added |
+| Frontend lint, typecheck, build | passed |
+| Browser walkthrough | existing `frontend/e2e/smoke.mjs` passed unchanged, no console or page errors (see note) |
+| Live cross-role check | 24/24 checks passed (see below) |
+| CI on the final head | recorded on PR #6 |
+
+**Live cross-role check.** A backend and worker with the mock model, on PostgreSQL.
+Alice (MEMBER) runs; Bob (MEMBER), Vic (VIEWER) and Adam (ADMIN) read through the
+API:
+- organization-readable provenance (`external_input` + an organization memory):
+  visible to all three;
+- a private memory: `restricted_sources` for all three, visible to Alice;
+- a restricted document: withheld from Bob, visible after a later grant without a
+  re-run, withheld again after revocation; Vic stays withheld; Adam sees it via
+  `knowledge:read_all`;
+- pre-M8 `NULL` provenance: `unknown_provenance` for all three, visible to Alice;
+- `workflow.tool_executed` audit events carry `source_counts`, `sources_truncated`,
+  `acting_role` and `restricted` (`false` for organization sources, `true` with the
+  private memory), and no content.
+
+The document's provenance and the pre-M8 state were set in the database. Retrieval
+needs real embeddings, and pre-M8 data cannot be produced otherwise. Every read went
+through the API.
+
+**Note on the walkthrough.** §9 asks for a "13-step browser walkthrough". The
+repository's walkthrough, `frontend/e2e/smoke.mjs`, is documented as 11 steps in
+`operating-environment.md`; its log prints 13 checkpoint lines. It was run unchanged:
+M8.10 allows no E2E or code changes. The §9 wording is left as written, pending the
+contract owner's decision.

@@ -385,7 +385,8 @@ PostgreSQL-only test suite. Rollout is staged: enable first, then `FORCE`.
 
 ### ADR-0035 — Workflow and run content is visible to its participants
 **Status:** Accepted and implemented (participant rule; `app/rbac/visibility.py`,
-`tests/security/`). Widening through provenance waits for ADR-0037.
+`tests/security/`). Widened by ADR-0037 (Milestone 8): content is also visible to a
+viewer who can read every recorded source now.
 Details: [`docs/architecture/adr-0035-workflow-output-authorization.md`](docs/architecture/adr-0035-workflow-output-authorization.md).
 **Decision:** Workflow and agent runs split metadata (organization-visible under
 `:view`) from content (`input`, `context`, step outputs, free-text reasons), which is
@@ -409,14 +410,17 @@ only as one person and never hold authority of their own.
 permission families and no policy engine.
 
 ### ADR-0037 — Permission propagation through provenance references
-**Status:** Proposed (security review, 2026-09).
+**Status:** Implemented (Milestone 8, 2026-10; PR #6).
 Details: [`docs/architecture/adr-0037-permission-propagation-provenance.md`](docs/architecture/adr-0037-permission-propagation-provenance.md).
 **Decision:** Runs record a bounded list of source references: knowledge documents and
-tables, memories, integration connections, upstream steps, external input. They also
-record the acting role. References are captured at the existing choke points, never as
-copied content. A non-participant sees run content only if they can read every source,
-checked in bulk with the existing predicates. A missing or truncated source list fails
-closed.
+tables, memories, integration connections, conversations, upstream runs and steps,
+external input. They also record the acting role. References are captured at the
+existing choke points, never as copied content. A non-participant sees run content only
+if they can read every source now, checked in bulk with the existing predicates. A
+missing, empty or truncated source list fails closed. Withheld content carries
+`restricted_sources` or `unknown_provenance`. Publications are attributed in the audit
+trail (`restricted`, `source_counts`); the approval gate for restricted publications is
+deferred to Milestone 9.
 **Consequences:** Visibility can safely widen beyond participants, and publications
 (tasks, shared memory, outbound sends) become attributable to their sources. The cost
 is four columns and one bulk check per non-participant content read.

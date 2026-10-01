@@ -6,6 +6,24 @@ and the project uses Conventional Commits.
 
 ## [Unreleased]
 
+### Milestone 8 — Permission propagation & provenance (ADR-0037)
+- **Run content now follows its sources** (**behavior change**). Agent and workflow
+  run content was visible only to the run's person (ADR-0035). It is now also
+  visible to a member who can read every source the run recorded, under their
+  current permissions: a later grant reveals it, a revocation hides it again.
+  Missing, empty, truncated or unresolvable provenance fails closed, and admins get
+  no bypass (`knowledge:read_all` applies to knowledge only).
+- **Provenance:** runs record `{type, id}` references to the documents, tables,
+  memories, integrations, conversations and input they read, never their text.
+  Workflow steps inherit what they consume, and runs accumulate it. Migration
+  `810da20ca5ee` adds `sources`, `sources_truncated` and `acting_role`; there is no
+  backfill, and older runs fail closed.
+- **API:** withheld runs carry `content_withheld_reason`: `restricted_sources` or
+  `unknown_provenance`. The UI explains which applies, without naming sources.
+- **Audit:** `agent.tool_executed` and `workflow.tool_executed` record
+  `source_counts`, `sources_truncated`, `acting_role` and `restricted` (attribution
+  only). An approval gate for restricted publications is planned for Milestone 9.
+
 ### Security & hardening — Phase 10 (in progress)
 - **Frontend dependencies:** Next.js 14.2 → 16.3. The 14.x line had a critical and
   a high advisory, including its bundled postcss; `npm audit --omit=dev` now finds

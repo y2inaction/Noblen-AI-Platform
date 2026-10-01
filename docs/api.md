@@ -145,12 +145,16 @@ Retention is set with `PATCH /organizations/current` `{"memory_retention_days": 
 | POST | `/workflow-runs/{id}/approve` · `/reject` (`{note?}`) | `agent:approve_actions` |
 | POST | `/workflow-runs/{id}/cancel` | `agent:operate` |
 
-**Run content (ADR-0035).**
+**Run content (ADR-0035, ADR-0037).**
 - Visible to everyone with the view permission: status, steps and their statuses,
   timings, error codes and the initiator.
-- Visible only to the person the run acts for: `input`, `context`, step `output`,
-  and `error` / `decision_note` text.
-- Everyone else gets `null` for those fields and `content_withheld: true`. Approvers
+- Content (`input`, `context`, step `output`, and `error` / `decision_note` text) is
+  visible to the person the run acts for, and to anyone who can currently read every
+  source the run recorded.
+- Everyone else gets `null` for those fields, `content_withheld: true` and
+  `content_withheld_reason`: `restricted_sources` (a source they cannot read) or
+  `unknown_provenance` (missing, empty, truncated or unresolvable provenance, which
+  fails closed). The response never names the source. Approvers
   (`agent:approve_actions`) still see the output of approval requests (approval
   steps, and tool steps waiting for or rejected at approval).
 - The same rule covers `/runs` (`escalation_reason`, failed-tool `error`),
