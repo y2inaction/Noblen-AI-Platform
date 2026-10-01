@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { titleCase } from "@/lib/format";
+import type { WithheldReason } from "@/lib/types";
 
 const TONES: Record<string, string> = {
   green: "bg-emerald-50 text-emerald-700 ring-emerald-200",
@@ -123,6 +124,29 @@ export function ErrorBanner({ message }: { message: string | null }) {
   return (
     <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
       {message}
+    </p>
+  );
+}
+
+const WITHHELD_MESSAGES: Record<WithheldReason, string> = {
+  restricted_sources:
+    "Some of this run's content comes from sources you don't currently have access to.",
+  unknown_provenance:
+    "This run's sources can't be verified, so its content is shown only to the person it acted for.",
+};
+
+/** Why a run's content is hidden from you. Never names the source involved. */
+export function WithheldNotice({
+  reason,
+  children,
+}: {
+  reason: WithheldReason | null;
+  children?: ReactNode;
+}) {
+  return (
+    <p className="mb-4 rounded-lg bg-slate-100 px-4 py-3 text-sm text-slate-700">
+      {WITHHELD_MESSAGES[reason ?? "unknown_provenance"]}
+      {children ? <> {children}</> : null}
     </p>
   );
 }

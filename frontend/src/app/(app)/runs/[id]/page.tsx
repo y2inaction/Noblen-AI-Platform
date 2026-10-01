@@ -2,7 +2,16 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Badge, Card, ErrorBanner, JsonView, Loading, PageHeader, Stat } from "@/components/ui";
+import {
+  Badge,
+  Card,
+  ErrorBanner,
+  JsonView,
+  Loading,
+  PageHeader,
+  Stat,
+  WithheldNotice,
+} from "@/components/ui";
 import { money, short, titleCase, when } from "@/lib/format";
 import { useApi } from "@/lib/hooks";
 import type { RunDetail, RunStep } from "@/lib/types";
@@ -43,11 +52,7 @@ export default function RunTracePage() {
           </>
         }
       />
-      {r.content_withheld && (
-        <p className="mb-4 rounded-lg bg-slate-100 px-4 py-3 text-sm text-slate-700">
-          This run acted for another person. Its escalation reason and tool error details are visible only to them.
-        </p>
-      )}
+      {r.content_withheld && <WithheldNotice reason={r.content_withheld_reason} />}
       {r.escalation_reason && (
         <p className="mb-4 rounded-lg bg-orange-50 px-4 py-3 text-sm text-orange-800">
           Escalated: {r.escalation_reason}
