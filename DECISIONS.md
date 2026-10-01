@@ -424,3 +424,20 @@ deferred to Milestone 9.
 **Consequences:** Visibility can safely widen beyond participants, and publications
 (tasks, shared memory, outbound sends) become attributable to their sources. The cost
 is four columns and one bulk check per non-participant content read.
+
+### ADR-0038 — Approval before publishing restricted-derived content
+**Status:** Proposed (Milestone 9, 2026-10).
+Details: [`docs/architecture/adr-0038-restricted-publication-approval.md`](docs/architecture/adr-0038-restricted-publication-approval.md).
+Implementation contract: [`docs/architecture/milestone-9-restricted-publication.md`](docs/architecture/milestone-9-restricted-publication.md).
+**Decision:** An organization setting, `require_approval_to_publish_restricted` (default
+off), requires an approval before a run publishes content derived from restricted
+sources. The publication sinks form an explicit list (tasks, member notifications,
+agent memory, outbound email and webhooks, calendar and CRM writes, enabled MCP tools).
+An existing approval is reused, with at most one request per execution. Only approvers
+who hold `agent:approve_actions` and can read every source now may see the payload or
+decide. Eligibility is re-checked at decision time, and `require_independent_approval`
+still applies. The same rule covers agent and workflow paths. Published output is not
+retracted.
+**Consequences:** Restricted-derived content can be reviewed before it leaves its
+person, with no change when the setting is off. Some requests are metadata-only to
+ineligible approvers and fail closed when no one is eligible.
