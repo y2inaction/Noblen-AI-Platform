@@ -69,6 +69,7 @@ from app.models.run import AgentRun, AgentRunStep
 from app.models.tool import AgentTool, Tool
 from app.models.user import User
 from app.rbac.permissions import Permission, role_has_permission
+from app.rbac.visibility import publication_attribution
 from app.services import ai_usage_service, memory_service, work_service
 from app.services.audit_service import record_audit
 from app.services.memory_service import AgentMemory
@@ -409,6 +410,7 @@ class AgentRuntime:
         version_id: uuid.UUID | None = None,
         background: bool = False,
         conversation_is_source: bool = True,
+        inherited: tuple[list[dict[str, str]] | None, bool] | None = None,
     ) -> RuntimeResult:
         """Admit a task and run it now, or queue it for a worker (`background`).
 
@@ -417,7 +419,8 @@ class AgentRuntime:
         so the conversation is recorded as a source (M8). The workflow engine
         passes `conversation_is_source=False` for the conversation it creates for
         one step: that holds only the rendered step input, whose provenance the
-        engine records itself.
+        engine records itself, and passes it as `inherited` so the run starts
+        from it (fail closed: unknown or truncated input truncates the run).
         """
         if len(input_message) > settings.AGENT_MAX_INPUT_CHARS:
             from app.core.exceptions import ValidationError
@@ -447,6 +450,12 @@ class AgentRuntime:
             content=input_message,
             created_by=user_id,
         )
+        initial = ProvenanceCollector()
+        if conversation_is_source:
+            initial.add(provenance.conversation_ref(conversation_id))
+        if inherited is not None:
+            initial.inherit(*inherited)
+        sources, truncated = initial.snapshot()
         run = AgentRun(
             organization_id=organization_id,
             agent_id=agent_id,
@@ -456,11 +465,10 @@ class AgentRuntime:
             status=RunStatus.QUEUED.value if background else RunStatus.RUNNING.value,
             context_start_sequence=user_message.sequence,
             started_at=None if background else _now(),
-            # Provenance (M8): the conversation, plus what the capabilities record.
-            sources=[provenance.conversation_ref(conversation_id)]
-            if conversation_is_source
-            else [],
-            sources_truncated=False,
+            # Provenance (M8): the conversation or the step input it holds, plus
+            # what the capabilities record.
+            sources=sources,
+            sources_truncated=truncated,
             acting_role=await provenance.acting_role(db, organization_id, user_id),
         )
         db.add(run)
@@ -898,6 +906,12 @@ class AgentRuntime:
                     "risk_level": binding.handler.risk_level,
                     "approved": pre_approved,
                     "ok": ok,
+                    # Publication attribution (M8.8): what the run's output derives
+                    # from, by reference counts only.
+                    "acting_role": run.acting_role,
+                    **await publication_attribution(
+                        db, run.organization_id, run.sources, run.sources_truncated
+                    ),
                 },
             )
         logger.info("agent_tool_executed", tool_name=tool_call.name, ok=ok)

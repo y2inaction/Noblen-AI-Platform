@@ -38,7 +38,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents import conversations, provenance
-from app.knowledge.access import readable_documents_query, resolve_principal
+from app.knowledge.access import Principal, readable_documents_query, resolve_principal
 from app.models.conversation import Conversation
 from app.models.enums import RunStepStatus, RunStepType, WorkflowStepStatus
 from app.models.integration import IntegrationConnection
@@ -155,8 +155,14 @@ async def resolve_source_access(
     viewer: Viewer,
     organization_id: uuid.UUID,
     provenances: Iterable[_Provenance],
+    *,
+    principal: Principal | None = None,
 ) -> SourceAccess:
     """Resolve, for `viewer`, every reference in `provenances` in bulk.
+
+    `principal` is the viewer's knowledge principal. It is looked up from the
+    viewer's current membership unless given (publication attribution passes a
+    baseline member that holds nothing).
 
     The checks are the platform's existing ones, evaluated with the viewer's
     permissions at this moment:
@@ -233,7 +239,8 @@ async def resolve_source_access(
         tables = dict(rows.tuples().all())
         documents |= set(tables.values())
     if documents:
-        principal = await resolve_principal(db, organization_id, viewer.user_id)
+        if principal is None:
+            principal = await resolve_principal(db, organization_id, viewer.user_id)
         existing = set(
             (
                 await db.execute(
@@ -302,6 +309,44 @@ async def can_read_sources(
     """Whether `viewer` can read every source in `sources` right now."""
     access = await resolve_source_access(db, viewer, organization_id, [(sources, truncated)])
     return access.status(sources, truncated) == _READABLE
+
+
+# --------------------------------------------------------------------------- #
+# Publication attribution (M8.8)
+# --------------------------------------------------------------------------- #
+async def publication_attribution(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    sources: Sequence[Mapping[str, Any]] | None,
+    truncated: bool,
+) -> dict[str, Any]:
+    """Audit metadata for output a run publishes (a task, a memory, a message, an
+    external call): how many sources of each type it derives from, and whether it
+    is `restricted`.
+
+    `restricted` is false only when a baseline member of the organization (no
+    role permissions, no grants, no private data, in no conversation) could read
+    every source now. Anything else, including unknown, empty or truncated
+    provenance, is restricted. References and counts only, never content.
+    """
+    counts: dict[str, int] = {}
+    for raw in sources or ():
+        key = _ref(raw)
+        kind = key[0] if key is not None else "invalid"
+        counts[kind] = counts.get(kind, 0) + 1
+    baseline = Viewer(user_id=uuid.uuid4(), role_name="")
+    access = await resolve_source_access(
+        db,
+        baseline,
+        organization_id,
+        [(sources, truncated)],
+        principal=Principal(organization_id, baseline.user_id, baseline.role_name),
+    )
+    return {
+        "source_counts": counts,
+        "sources_truncated": bool(truncated),
+        "restricted": access.status(sources, truncated) != _READABLE,
+    }
 
 
 # --------------------------------------------------------------------------- #

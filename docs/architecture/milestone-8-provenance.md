@@ -142,9 +142,24 @@ remains a decision made at read time, against the viewer's *current* permissions
 
 ## 7. Publication attribution
 
-- Tasks and AGENT/ORGANIZATION memories created by a run store `source_run_id`.
-- The audit events `agent.tool_executed` and `workflow.tool_executed` carry
-  `source_counts` and `restricted: bool`, never content.
+- Tasks and AGENT/ORGANIZATION memories created by an agent run store
+  `source_run_id`. Tasks created by a workflow tool step are attributed through the
+  audit trail (no new column).
+- The existing audit events `agent.tool_executed` (target: the agent run) and
+  `workflow.tool_executed` (target: the workflow run, plus `step` and `tool`) record
+  who published (the run's person, `acting_role`), when (the audit timestamp) and
+  what the output derives from. They never record content:
+  - `source_counts`: reference counts by type;
+  - `sources_truncated`;
+  - `restricted`: `false` only when a baseline member of the organization (no role
+    permissions, no grants, no private data, in no conversation) could read every
+    source now. It is resolved with the §6 checks, so NULL, empty, truncated or
+    unresolvable provenance is restricted.
+- A workflow tool step's publication derives from what it consumed upstream and
+  what it observed itself. An agent step's run starts from the provenance its step
+  consumed, so publications made during the run are attributed to it too.
+- `restricted` is attribution only. It changes no visibility and blocks nothing;
+  the approval gate for restricted publications is deferred (§1.3).
 
 ## 8. Test matrix (written first; every new test fails before its fix)
 

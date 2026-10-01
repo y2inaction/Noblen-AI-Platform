@@ -54,6 +54,7 @@ from app.models.organization import Organization
 from app.models.run import AgentRun
 from app.models.workflow import Workflow, WorkflowRun, WorkflowStepRun, WorkflowVersion
 from app.rbac.permissions import Permission, role_has_permission
+from app.rbac.visibility import publication_attribution
 from app.services import work_service
 from app.services.audit_service import record_audit
 from app.services.work_service import AgentWorkspace
@@ -217,6 +218,19 @@ class WorkflowEngine:
         input and all its steps. Unknown or truncated provenance anywhere upstream
         makes every consumer truncated; nothing is ever reset to empty.
         """
+        inherited, inherited_truncated = await self._consumed(db, run, step, step_run)
+
+        if step_run.agent_run_id is not None:
+            agent_run = await db.get(AgentRun, step_run.agent_run_id)
+            if agent_run is not None:
+                _merge_into(agent_run, inherited, inherited_truncated)
+        _merge_into(step_run, inherited, inherited_truncated)
+        _merge_into(run, step_run.sources, step_run.sources_truncated)
+
+    async def _consumed(
+        self, db: AsyncSession, run: WorkflowRun, step: Any, step_run: WorkflowStepRun
+    ) -> tuple[list[dict[str, str]], bool]:
+        """The provenance of the upstream values this step's templates consume."""
         consumed = ProvenanceCollector()
         for path in references(_templates(step)):
             root, _, rest = path.partition(".")
@@ -226,14 +240,7 @@ class WorkflowEngine:
                 upstream = await self._latest_step_run(db, run, rest.split(".", 1)[0], step_run)
                 if upstream is not None:
                     consumed.inherit(upstream.sources, upstream.sources_truncated)
-        inherited, inherited_truncated = consumed.snapshot()
-
-        if step_run.agent_run_id is not None:
-            agent_run = await db.get(AgentRun, step_run.agent_run_id)
-            if agent_run is not None:
-                _merge_into(agent_run, inherited, inherited_truncated)
-        _merge_into(step_run, inherited, inherited_truncated)
-        _merge_into(run, step_run.sources, step_run.sources_truncated)
+        return consumed.snapshot()
 
     @staticmethod
     async def _latest_step_run(
@@ -453,6 +460,11 @@ class WorkflowEngine:
         if not result.ok:
             return _fail(result.error or f"Tool '{step.tool}' failed.")
         if handler.risk_level != ToolRiskLevel.LOW.value:
+            # Publication attribution (M8.8): the tool published content derived
+            # from what this step consumed upstream and what it observed itself.
+            published = ProvenanceCollector()
+            published.inherit(*await self._consumed(db, run, step, step_run))
+            published.inherit(step_run.sources, step_run.sources_truncated)
             await record_audit(
                 db,
                 action="workflow.tool_executed",
@@ -460,7 +472,12 @@ class WorkflowEngine:
                 organization_id=run.organization_id,
                 target_type="workflow_run",
                 target_id=str(run.id),
-                metadata={"step": step.id, "tool": step.tool},
+                metadata={
+                    "step": step.id,
+                    "tool": step.tool,
+                    "acting_role": run.acting_role,
+                    **await publication_attribution(db, run.organization_id, *published.snapshot()),
+                },
             )
         return _done(result.output)
 
@@ -492,8 +509,9 @@ class WorkflowEngine:
                 conversation_id=conversation.id,
                 input_message=message,
                 # A fresh conversation holding only the rendered step input: its
-                # provenance is what the step consumed (recorded in _propagate).
+                # provenance is what the step consumed, which the run starts with.
                 conversation_is_source=False,
+                inherited=await self._consumed(db, run, step, step_run),
             )
         except AIError as exc:
             return _fail(
