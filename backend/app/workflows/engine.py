@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents import conversations as conversation_service
 from app.agents import provenance
 from app.agents.provenance import ProvenanceCollector
+from app.agents.publication import is_publication_sink, is_restricted_publication
 from app.agents.runtime import AgentRuntime
 from app.agents.tools.base import ToolContext
 from app.agents.tools.registry import ToolRegistry, tool_registry, validate_arguments
@@ -418,7 +419,18 @@ class WorkflowEngine:
         if error := validate_arguments(handler.input_schema, arguments):
             return _fail(f"Invalid arguments for '{step.tool}': {error}")
 
-        needs_approval = step.require_approval or handler.risk_level == ToolRiskLevel.HIGH.value
+        if step_run.status != WorkflowStepStatus.WAITING.value and is_publication_sink(handler):
+            # Restricted publication (M9, ADR-0038): decided before the tool runs,
+            # on what the step consumes. A waiting step keeps its marker, so a
+            # decision is always honoured.
+            step_run.restricted_publication = await is_restricted_publication(
+                db, run.organization_id, handler, *await self._consumed(db, run, step, step_run)
+            )
+        needs_approval = (
+            step.require_approval
+            or handler.risk_level == ToolRiskLevel.HIGH.value
+            or step_run.restricted_publication
+        )
         if needs_approval:
             if step_run.status != WorkflowStepStatus.WAITING.value:
                 return await self._ask(

@@ -18,8 +18,13 @@ and the project uses Conventional Commits.
   baseline member could not read in full waits for an approval before it runs.
   Unknown, empty or truncated provenance counts as restricted. An approval the
   tool already required is reused; there is one request per call. Migration
-  `8e4f2a6c1b97` adds `approvals.restricted_publication`. Workflow tool steps,
-  approver eligibility and payload confidentiality come next (M9.5, M9.6).
+  `8e4f2a6c1b97` adds `approvals.restricted_publication`.
+- **Workflow publications (M9.5):** the same rule for workflow tool steps, decided
+  on the provenance the step consumes, before the tool runs. The step waits through
+  the existing `WAITING`/decide flow, one decision per step (a step that already
+  required approval is reused), and a rejection publishes nothing. Migration
+  `c3d5e7f9a1b2` adds `workflow_step_runs.restricted_publication`. Approver
+  eligibility and payload confidentiality come next (M9.6).
 
 ### Milestone 8 — Permission propagation & provenance (ADR-0037)
 - **Run content now follows its sources** (**behavior change**). Agent and workflow

@@ -212,12 +212,14 @@ async def _to_publication(
     secret: str,
     sources,
     truncated: bool = False,
+    person: str = "alice",
 ) -> str:
-    """Alice starts the run; `check` gets the chosen provenance and is approved by
-    the owner; the run then reaches the `log` publication step."""
+    """`person` (Alice by default) starts the run; `check` gets the chosen
+    provenance and is approved by the owner; the run then reaches the `log`
+    publication step."""
     started = await client.post(
         f"/api/v1/workflows/{workflow_id}/runs",
-        headers=_h(team["alice"]),
+        headers=_h(team[person]),
         json={"input": {"secret": secret}},
     )
     assert started.status_code == 202, started.text
@@ -1098,3 +1100,112 @@ async def test_a_reused_approval_resumes_and_publishes_once(client, env, provide
     assert len(await _approvals(session_factory, result["run_id"])) == 1
     inbox = await client.get("/api/v1/notifications", headers=_h(team["max"]))
     assert inbox.text.count(secret) == 1
+
+
+# --------------------------------------------------------------------------- #
+# M9.5: the workflow path on its own (gate, marker, single request, resume)
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "variant",
+    ["null", "truncated", "malformed", "missing", "foreign", "cyclic", "over_depth"],
+)
+async def test_unknown_provenance_gates_a_workflow_publication(
+    client, env, provider, runtime, session_factory, variant
+):
+    """Empty provenance is test_empty_provenance_is_gated: here the step also
+    consumes the run's input, so its own provenance is never empty."""
+    team = await _team(client, session_factory, f"wf-unknown-{variant}")
+    await _enable(client, team["owner"])
+    sources, truncated = await _unknown_sources(variant, client, provider, session_factory, team)
+    workflow_id = await _workflow(client, team["owner"])
+    secret = _canary("secret")
+    run_id = await _to_publication(
+        client, session_factory, runtime, team, workflow_id, secret, sources, truncated
+    )
+    body = await _waiting(client, team, run_id)
+    log = _step(body, "log")
+    assert log["status"] == "WAITING" and log["restricted_publication"] is True
+    assert await _tasks(session_factory, secret) == []
+
+
+async def test_workflow_reads_are_never_gated(client, env, runtime, session_factory):
+    """Read steps that consume nothing have empty provenance, which is restricted,
+    yet reads are not publications."""
+    team = await _team(client, session_factory, "wf-read")
+    await _enable(client, team["owner"])
+    created = await client.post(
+        "/api/v1/workflows",
+        headers=_h(team["owner"]),
+        json={
+            "name": "Read",
+            "definition": {
+                "steps": [
+                    {"id": "time", "type": "tool", "tool": "get_current_time", "arguments": {}},
+                    {"id": "tasks", "type": "tool", "tool": "list_tasks", "arguments": {}},
+                ]
+            },
+        },
+    )
+    assert created.status_code == 201, created.text
+    workflow_id = created.json()["id"]
+    await client.post(f"/api/v1/workflows/{workflow_id}/activate", headers=_h(team["owner"]))
+    started = await client.post(
+        f"/api/v1/workflows/{workflow_id}/runs", headers=_h(team["alice"]), json={"input": {}}
+    )
+    await _drain(session_factory, runtime)
+    body = await _run(client, team["alice"], started.json()["id"])
+    assert body["status"] == "COMPLETED", body
+    assert [s["restricted_publication"] for s in body["steps"]] == [False, False]
+
+
+async def test_a_reused_workflow_approval_publishes_once(client, env, runtime, session_factory):
+    """`require_approval` already makes the step wait: one decision, marked, and
+    approving it publishes exactly once."""
+    team = await _team(client, session_factory, "wf-reuse-once")
+    await _enable(client, team["owner"])
+    doc = await _restricted_doc(session_factory, client, team, readers=["alice"])
+    workflow_id = await _workflow(client, team["owner"], require_approval=True)
+    secret = _canary("secret")
+    run_id = await _to_publication(
+        client, session_factory, runtime, team, workflow_id, secret, [_doc_ref(doc)]
+    )
+    body = await _waiting(client, team, run_id)
+    waiting = [s for s in body["steps"] if s["status"] == "WAITING"]
+    assert [(s["step_id"], s["restricted_publication"]) for s in waiting] == [("log", True)]
+    ok = await client.post(f"/api/v1/workflow-runs/{run_id}/approve", headers=_h(team["owner"]))
+    assert ok.status_code == 200, ok.text
+    again = await client.post(f"/api/v1/workflow-runs/{run_id}/approve", headers=_h(team["owner"]))
+    assert again.status_code == 409, again.text
+    await _drain(session_factory, runtime)
+    body = await _run(client, team["alice"], run_id)
+    assert body["status"] == "COMPLETED", body
+    assert len([s for s in body["steps"] if s["step_id"] == "log"]) == 1
+    assert len(await _tasks(session_factory, secret)) == 1
+
+
+async def test_independent_approval_applies_to_a_restricted_workflow_publication(
+    client, env, runtime, session_factory
+):
+    team = await _team(client, session_factory, "wf-sod")
+    await _enable(client, team["owner"])
+    sod = await client.patch(
+        "/api/v1/organizations/current",
+        headers=_h(team["owner"]),
+        json={"require_independent_approval": True},
+    )
+    assert sod.status_code == 200, sod.text
+    doc = await _restricted_doc(session_factory, client, team, readers=["mia", "max"])
+    workflow_id = await _workflow(client, team["owner"])
+    secret = _canary("secret")
+    run_id = await _to_publication(
+        client, session_factory, runtime, team, workflow_id, secret, [_doc_ref(doc)], person="mia"
+    )
+    await _waiting(client, team, run_id)
+    # The existing workflow rule: the run's initiator cannot decide.
+    own = await client.post(f"/api/v1/workflow-runs/{run_id}/approve", headers=_h(team["mia"]))
+    assert own.status_code == 403, own.text
+    assert (await _run(client, team["mia"], run_id))["status"] == "WAITING"
+    peer = await client.post(f"/api/v1/workflow-runs/{run_id}/approve", headers=_h(team["max"]))
+    assert peer.status_code == 200, peer.text
+    await _drain(session_factory, runtime)
+    assert len(await _tasks(session_factory, secret)) == 1

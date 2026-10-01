@@ -41,7 +41,7 @@ from app.agents import registry as agent_registry
 from app.agents.errors import AgentInactive
 from app.agents.memory import load_run_context
 from app.agents.provenance import ProvenanceCollector
-from app.agents.publication import is_publication_sink
+from app.agents.publication import is_restricted_publication
 from app.agents.tools.base import ToolContext
 from app.agents.tools.registry import ToolRegistry, tool_registry, validate_arguments
 from app.ai.errors import AIError
@@ -934,21 +934,12 @@ class AgentRuntime:
     async def _is_restricted_publication(
         self, db: AsyncSession, state: _RunState, binding: _ToolBinding
     ) -> bool:
-        """A publication sink, in an organization that requires approval for
-        restricted publications, from provenance a baseline member could not read
-        in full now (ADR-0037 `restricted`: unknown, empty or truncated is
-        restricted). Evaluated before the call executes."""
-        if not is_publication_sink(binding.handler):
-            return False
+        """Evaluated before the call executes, on the run's provenance so far."""
         run = state.run
-        org = await db.get(Organization, run.organization_id)
-        if org is None or not org.require_approval_to_publish_restricted:
-            return False
         self._save_provenance(state)
-        attribution = await publication_attribution(
-            db, run.organization_id, run.sources, run.sources_truncated
+        return await is_restricted_publication(
+            db, run.organization_id, binding.handler, run.sources, run.sources_truncated
         )
-        return bool(attribution["restricted"])
 
     async def _store_tool_result(
         self,

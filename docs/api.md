@@ -127,8 +127,8 @@ escalated). See [`architecture/agents.md`](./architecture/agents.md).
 `PATCH /organizations/current` accepts `require_independent_approval` (separation of duties).
 It also accepts `require_approval_to_publish_restricted` (boolean, default `false`;
 Milestone 9, ADR-0038), returned by `GET /organizations/current`. The setting is
-enforced for agent publications (see Approvals above); workflow publications are
-not gated yet.
+enforced for agent publications (see Approvals above) and workflow tool steps
+(see Workflows).
 
 ### Memory — `/api/v1/memories` (Noblen AI 3.0, M4)
 | Method | Path | Permission |
@@ -153,6 +153,12 @@ Retention is set with `PATCH /organizations/current` `{"memory_retention_days": 
 | GET | `/workflow-runs?workflow_id=&status=` · `/workflow-runs/{id}` (with step trace) | `workflow:view`; content only for the run's person (below) |
 | POST | `/workflow-runs/{id}/approve` · `/reject` (`{note?}`) | `agent:approve_actions` |
 | POST | `/workflow-runs/{id}/cancel` | `agent:operate` |
+
+Steps carry `restricted_publication` (Milestone 9): true when a tool step waits, or
+waited, at approval because `require_approval_to_publish_restricted` is on and what
+it consumes is restricted or unknown. It is decided before the tool runs; a step that
+already required approval keeps its single decision. Approver eligibility and payload
+confidentiality are not implemented yet.
 
 **Run content (ADR-0035, ADR-0037).**
 - Visible to everyone with the view permission: status, steps and their statuses,

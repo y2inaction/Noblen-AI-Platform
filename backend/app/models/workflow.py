@@ -149,3 +149,8 @@ class WorkflowStepRun(UUIDMixin, TimestampMixin, TenantMixin, Base):
     sources_truncated: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=false(), nullable=False
     )
+    # Milestone 9 (ADR-0038): this tool step waits, or waited, for an approval as a
+    # restricted publication. Set when the step first asks; never cleared.
+    restricted_publication: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )

@@ -230,7 +230,7 @@ migration with no backfill:
 |---|---|---|
 | M9.3 | `5b9e1c3d7a42` | `organizations.require_approval_to_publish_restricted` |
 | M9.4 | `8e4f2a6c1b97` | `approvals.restricted_publication` |
-| M9.5 | (to come) | `workflow_step_runs.restricted_publication` |
+| M9.5 | `c3d5e7f9a1b2` | `workflow_step_runs.restricted_publication` |
 
 The marker makes the §4 rule (turning the setting off does not release a request)
 enforceable. The
@@ -256,10 +256,10 @@ Each step stops for review.
 ### Checklist
 
 - [x] M9.1 contract and ADR-0038 (Proposed)
-- [ ] M9.2 security tests (failing)
-- [ ] M9.3 schema and setting
-- [ ] M9.4 agent path
-- [ ] M9.5 workflow path
+- [x] M9.2 security tests (failing)
+- [x] M9.3 organization setting
+- [x] M9.4 agent path
+- [x] M9.5 workflow path
 - [ ] M9.6 eligibility and confidentiality
 - [ ] M9.7 audit
 - [ ] M9.8 frontend

@@ -105,6 +105,8 @@ class WorkflowStepRunOut(BaseModel):
     decision_note: str | None
     started_at: datetime | None
     finished_at: datetime | None
+    # Milestone 9 (ADR-0038): the step gates a restricted publication.
+    restricted_publication: bool = False
 
 
 class WorkflowRunOut(BaseModel):
