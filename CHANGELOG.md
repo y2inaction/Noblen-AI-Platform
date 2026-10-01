@@ -6,6 +6,12 @@ and the project uses Conventional Commits.
 
 ## [Unreleased]
 
+### Milestone 9 — Restricted publication approval (ADR-0038, in progress)
+- **Setting:** organizations have `require_approval_to_publish_restricted`
+  (default `false`), read and written through `/organizations/current` under
+  `org:manage`. Migration `5b9e1c3d7a42` adds it, and existing organizations get
+  `false`. It is stored only: no approval behavior changes yet.
+
 ### Milestone 8 — Permission propagation & provenance (ADR-0037)
 - **Run content now follows its sources** (**behavior change**). Agent and workflow
   run content was visible only to the run's person (ADR-0035). It is now also

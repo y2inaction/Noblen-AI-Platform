@@ -18,6 +18,7 @@ class OrganizationPublic(BaseModel):
     timezone: str
     locale: str
     require_independent_approval: bool = False
+    require_approval_to_publish_restricted: bool = False
     memory_retention_days: int | None = None
 
 
@@ -28,6 +29,9 @@ class OrganizationUpdate(BaseModel):
     locale: str | None = Field(default=None, max_length=16)
     # Separation of duties for AI actions: initiators cannot approve their own runs.
     require_independent_approval: bool | None = None
+    # Approval before publishing restricted-derived content (M9, ADR-0038). Only a
+    # boolean is accepted (null is rejected); omitting it leaves it unchanged.
+    require_approval_to_publish_restricted: bool = False
     # Days an unused long-term memory is kept; null keeps memories until deleted.
     memory_retention_days: int | None = Field(default=None, ge=1, le=3650)
 

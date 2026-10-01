@@ -120,6 +120,9 @@ escalated). See [`architecture/agents.md`](./architecture/agents.md).
 | POST | `/notifications/{id}/read` · `/notifications/read-all` | any member (own only) |
 
 `PATCH /organizations/current` accepts `require_independent_approval` (separation of duties).
+It also accepts `require_approval_to_publish_restricted` (boolean, default `false`;
+Milestone 9, ADR-0038), returned by `GET /organizations/current`. The setting is
+stored only: approval enforcement is not implemented yet.
 
 ### Memory — `/api/v1/memories` (Noblen AI 3.0, M4)
 | Method | Path | Permission |
