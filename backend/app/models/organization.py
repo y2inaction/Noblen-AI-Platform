@@ -32,6 +32,11 @@ class Organization(UUIDMixin, TimestampMixin, Base):
     require_independent_approval: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=false(), nullable=False
     )
+    # Restricted publication approval (M9, ADR-0038): when on, publications derived
+    # from restricted sources need an approval. Default off: no change from M8.
+    require_approval_to_publish_restricted: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
 
     # Memory retention (M4): long-term memories untouched for longer than this many
     # days are ignored and purged. None keeps them until deleted.

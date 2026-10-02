@@ -6,6 +6,42 @@ and the project uses Conventional Commits.
 
 ## [Unreleased]
 
+### Milestone 9 — Restricted publication approval (ADR-0038, implemented)
+- **Setting:** organizations have `require_approval_to_publish_restricted`
+  (default `false`), read and written through `/organizations/current` under
+  `org:manage`. Migration `5b9e1c3d7a42` adds it, and existing organizations get
+  `false`.
+- **Agent publications (M9.4):** with the setting on, an agent's call to a
+  publication sink (`create_task`, `update_task`, `notify_member`,
+  `save_agent_memory`, `send_email`, `call_webhook`, `create_calendar_event`,
+  `upsert_crm_contact`, `add_crm_note`, enabled MCP tools) whose provenance a
+  baseline member could not read in full waits for an approval before it runs.
+  Unknown, empty or truncated provenance counts as restricted. An approval the
+  tool already required is reused; there is one request per call. Migration
+  `8e4f2a6c1b97` adds `approvals.restricted_publication`.
+- **Workflow publications (M9.5):** the same rule for workflow tool steps, decided
+  on the provenance the step consumes, before the tool runs. The step waits through
+  the existing `WAITING`/decide flow, one decision per step (a step that already
+  required approval is reused), and a rejection publishes nothing. Migration
+  `c3d5e7f9a1b2` adds `workflow_step_runs.restricted_publication`.
+- **Approvers (M9.6):** a restricted publication is decided only by a holder of
+  `agent:approve_actions` who can read every source it derives from, checked
+  again at the decision; anyone else gets 403 `not_eligible`. The API withholds
+  its arguments from other approvers (`payload_withheld` on approvals; the step's
+  request on workflow runs), so they see only that it exists.
+- **Audit (M9.7):** `agent.approval_requested` adds `restricted_publication`,
+  `source_counts` and `sources_truncated`; a new `workflow.approval_requested`
+  records restricted workflow steps the same way; `agent.approval_decided` and
+  `workflow.approval_decided` add `restricted_publication` and the decision-time
+  `restricted`. A refused decision is recorded as `agent.` or
+  `workflow.approval_decision_refused` with `reason: not_eligible`, and the request
+  stays pending. Audit entries carry references and counts only, never content.
+- **Frontend (M9.8):** approvals and workflow runs mark restricted publications.
+  When the API withholds a request (`payload_withheld`, or a marked step without
+  output), the page shows a notice instead of its arguments, offers no "Edit
+  arguments", and reloads after a `not_eligible` refusal. The UI only follows the
+  API; it decides nothing.
+
 ### Milestone 8 — Permission propagation & provenance (ADR-0037)
 - **Run content now follows its sources** (**behavior change**). Agent and workflow
   run content was visible only to the run's person (ADR-0035). It is now also

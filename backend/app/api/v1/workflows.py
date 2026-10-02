@@ -18,9 +18,11 @@ from app.models.enums import WorkflowRunStatus, WorkflowStatus
 from app.models.organization import Organization
 from app.rbac.permissions import Permission, role_has_permission
 from app.rbac.visibility import (
+    eligible_for_restricted,
     present_workflow_run,
     present_workflow_run_detail,
     present_workflow_runs,
+    publication_attribution,
 )
 from app.schemas.workflow import (
     WorkflowActivate,
@@ -289,6 +291,34 @@ async def _decide(
         raise PermissionDeniedError(
             "This organization requires someone other than the run's initiator to decide."
         )
+    # A restricted publication is decided only by an approver who can read every
+    # source the step consumed, re-checked now (M9.6, ADR-0038 decisions A and E).
+    pending = await service.pending_decision(db, run)
+    if pending.restricted_publication and not await eligible_for_restricted(
+        db, ctx.viewer, ctx.organization_id, pending.sources, pending.sources_truncated
+    ):
+        # Audited, and kept although the request fails (M9.7): the request, the
+        # approver and the reason, never which source.
+        await _audit(
+            db,
+            ctx,
+            "workflow.approval_decision_refused",
+            "workflow_run",
+            run.id,
+            step=pending.step_id,
+            reason="not_eligible",
+            restricted_publication=True,
+        )
+        await db.commit()
+        raise PermissionDeniedError(
+            "You can't decide this step: it publishes content derived from sources "
+            "you can't currently read.",
+            error_code="not_eligible",
+        )
+    # M9.7: whether the step's provenance is restricted now (decision time).
+    attribution = await publication_attribution(
+        db, ctx.organization_id, pending.sources, pending.sources_truncated
+    )
     run = await service.decide(
         db, ctx.organization_id, run_id, ctx.user.id, approve=approve, note=body.note
     )
@@ -299,6 +329,9 @@ async def _decide(
         "workflow_run",
         run.id,
         decision="approved" if approve else "rejected",
+        step=pending.step_id,
+        restricted_publication=pending.restricted_publication,
+        restricted=attribution["restricted"],
     )
     await db.commit()
     await db.refresh(run)

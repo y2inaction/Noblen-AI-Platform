@@ -151,6 +151,22 @@ export function WithheldNotice({
   );
 }
 
+/** Marks an approval request for a publication derived from restricted sources. */
+export function RestrictedPublicationBadge() {
+  return <Badge value="RESTRICTED_PUBLICATION" tone="amber" />;
+}
+
+/** In place of a restricted request the server withheld from you (M9.6). Never
+ *  names the source, and never shows anything derived from it. */
+export function RestrictedPayloadNotice() {
+  return (
+    <p className="rounded-lg bg-slate-100 px-4 py-3 text-sm text-slate-700">
+      This approval contains restricted content. Its details are hidden because you do not
+      currently have access to all underlying sources.
+    </p>
+  );
+}
+
 export function Loading({ label = "Loading…" }: { label?: string }) {
   return <p className="py-6 text-center text-sm text-slate-400">{label}</p>;
 }

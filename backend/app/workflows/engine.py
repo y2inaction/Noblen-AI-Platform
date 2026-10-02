@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents import conversations as conversation_service
 from app.agents import provenance
 from app.agents.provenance import ProvenanceCollector
+from app.agents.publication import is_publication_sink, is_restricted_publication
 from app.agents.runtime import AgentRuntime
 from app.agents.tools.base import ToolContext
 from app.agents.tools.registry import ToolRegistry, tool_registry, validate_arguments
@@ -418,9 +419,40 @@ class WorkflowEngine:
         if error := validate_arguments(handler.input_schema, arguments):
             return _fail(f"Invalid arguments for '{step.tool}': {error}")
 
-        needs_approval = step.require_approval or handler.risk_level == ToolRiskLevel.HIGH.value
+        consumed: tuple[list[dict[str, str]], bool] | None = None
+        if step_run.status != WorkflowStepStatus.WAITING.value and is_publication_sink(handler):
+            # Restricted publication (M9, ADR-0038): decided before the tool runs,
+            # on what the step consumes. A waiting step keeps its marker, so a
+            # decision is always honoured.
+            consumed = await self._consumed(db, run, step, step_run)
+            step_run.restricted_publication = await is_restricted_publication(
+                db, run.organization_id, handler, *consumed
+            )
+        needs_approval = (
+            step.require_approval
+            or handler.risk_level == ToolRiskLevel.HIGH.value
+            or step_run.restricted_publication
+        )
         if needs_approval:
             if step_run.status != WorkflowStepStatus.WAITING.value:
+                if step_run.restricted_publication and consumed is not None:
+                    # M9.7: the request, by reference counts only, never content.
+                    attribution = await publication_attribution(db, run.organization_id, *consumed)
+                    await record_audit(
+                        db,
+                        action="workflow.approval_requested",
+                        user_id=run.initiated_by,
+                        organization_id=run.organization_id,
+                        target_type="workflow_run",
+                        target_id=str(run.id),
+                        metadata={
+                            "step": step.id,
+                            "tool": step.tool,
+                            "restricted_publication": True,
+                            "source_counts": attribution["source_counts"],
+                            "sources_truncated": attribution["sources_truncated"],
+                        },
+                    )
                 return await self._ask(
                     db, run, workflow, step_run, f"Run '{step.tool}'?", {"arguments": arguments}
                 )

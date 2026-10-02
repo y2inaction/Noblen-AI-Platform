@@ -39,6 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents import conversations, provenance
 from app.knowledge.access import Principal, readable_documents_query, resolve_principal
+from app.models.approval import Approval
 from app.models.conversation import Conversation
 from app.models.enums import RunStepStatus, RunStepType, WorkflowStepStatus
 from app.models.integration import IntegrationConnection
@@ -47,6 +48,7 @@ from app.models.memory import Memory
 from app.models.run import AgentRun, AgentRunStep
 from app.models.workflow import WorkflowRun, WorkflowStepRun
 from app.rbac.permissions import Permission, role_has_permission
+from app.schemas.approval import ApprovalOut
 from app.schemas.run import RunDetailOut, RunOut, RunStepOut
 from app.schemas.workflow import WorkflowRunDetail, WorkflowRunOut, WorkflowStepRunOut
 from app.services.memory_service import _fresh, _visible_to_member, retention_days
@@ -390,6 +392,88 @@ def sees_approval_requests(viewer: Viewer) -> bool:
     return viewer.may(Permission.AGENT_APPROVE_ACTIONS)
 
 
+# --------------------------------------------------------------------------- #
+# Restricted publication approvals (M9.6, ADR-0038 decisions A and E)
+# --------------------------------------------------------------------------- #
+# Approval fields that carry the publication's restricted-derived content.
+APPROVAL_CONTENT = ("modified_payload", "decision_note")
+
+
+def may_decide_restricted(
+    viewer: Viewer,
+    access: SourceAccess,
+    sources: Sequence[Mapping[str, Any]] | None,
+    truncated: bool,
+) -> bool:
+    """An approver of a restricted publication holds `agent:approve_actions` and
+    can read every recorded source now (the M8 rule, no participant exception:
+    unknown provenance can be decided by no one)."""
+    return (
+        viewer.may(Permission.AGENT_APPROVE_ACTIONS)
+        and access.status(sources, truncated) == _READABLE
+    )
+
+
+async def eligible_for_restricted(
+    db: AsyncSession,
+    viewer: Viewer,
+    organization_id: uuid.UUID,
+    sources: Sequence[Mapping[str, Any]] | None,
+    truncated: bool,
+) -> bool:
+    """Decision-time check: current permissions and current source access."""
+    if not viewer.may(Permission.AGENT_APPROVE_ACTIONS):
+        return False
+    access = await resolve_source_access(db, viewer, organization_id, [(sources, truncated)])
+    return may_decide_restricted(viewer, access, sources, truncated)
+
+
+async def approval_provenance(
+    db: AsyncSession, approvals: Sequence[Approval]
+) -> dict[uuid.UUID, _Provenance]:
+    """The provenance of the run each restricted approval pauses. A request
+    without its run is unknown, and fails closed."""
+    run_ids = {a.run_id for a in approvals if a.restricted_publication and a.run_id}
+    runs: dict[uuid.UUID, AgentRun] = {}
+    if run_ids:
+        rows = await db.execute(select(AgentRun).where(AgentRun.id.in_(run_ids)))
+        runs = {r.id: r for r in rows.scalars()}
+    out: dict[uuid.UUID, _Provenance] = {}
+    for approval in approvals:
+        if not approval.restricted_publication:
+            continue
+        run = runs.get(approval.run_id) if approval.run_id else None
+        if run is None or run.organization_id != approval.organization_id:
+            out[approval.id] = (None, False)
+        else:
+            out[approval.id] = (run.sources, run.sources_truncated)
+    return out
+
+
+async def present_approvals(
+    db: AsyncSession, approvals: Sequence[Approval], viewer: Viewer
+) -> list[ApprovalOut]:
+    """Approvals as `viewer` may see them. A restricted publication's payload is
+    shown only to an approver who may decide it; anyone else sees that the
+    request exists, its status and metadata, never its arguments."""
+    provenances = await approval_provenance(db, approvals)
+    access = SourceAccess()
+    if provenances and viewer.may(Permission.AGENT_APPROVE_ACTIONS):
+        organization_id = approvals[0].organization_id
+        access = await resolve_source_access(db, viewer, organization_id, provenances.values())
+    out: list[ApprovalOut] = []
+    for approval in approvals:
+        item = ApprovalOut.model_validate(approval)
+        if approval.id in provenances and not may_decide_restricted(
+            viewer, access, *provenances[approval.id]
+        ):
+            item.request_payload = {}
+            withhold(item, APPROVAL_CONTENT)
+            item.payload_withheld = True
+        out.append(item)
+    return out
+
+
 # Content fields per resource. Every field not listed is metadata.
 WORKFLOW_RUN_CONTENT = ("input", "error")  # plus `context` on the detail view
 WORKFLOW_STEP_CONTENT = ("output", "error", "decision_note")
@@ -466,11 +550,22 @@ async def present_workflow_run_detail(
         detail.steps = [WorkflowStepRunOut.model_validate(s) for s in steps]
         return detail
     approver = sees_approval_requests(viewer)
+    # A restricted publication's request is shown only to an approver who can
+    # read every source of that step now (M9.6).
+    marked = [s for s in steps if s.restricted_publication]
+    access = SourceAccess()
+    if approver and marked:
+        access = await resolve_source_access(
+            db, viewer, run.organization_id, [(s.sources, s.sources_truncated) for s in marked]
+        )
     detail.context = None
     detail.steps = []
     for step in steps:
         out = WorkflowStepRunOut.model_validate(step)
-        if not (approver and _is_approval_request(step)):
+        shown = approver and _is_approval_request(step)
+        if shown and step.restricted_publication:
+            shown = may_decide_restricted(viewer, access, step.sources, step.sources_truncated)
+        if not shown:
             withhold(out, WORKFLOW_STEP_CONTENT)
         detail.steps.append(out)
     return detail

@@ -11,6 +11,8 @@ import {
   JsonView,
   Loading,
   PageHeader,
+  RestrictedPayloadNotice,
+  RestrictedPublicationBadge,
   WithheldNotice,
 } from "@/components/ui";
 import { api } from "@/lib/client";
@@ -75,12 +77,18 @@ export default function WorkflowRunPage() {
                   {s.attempt > 1 && <span className="text-xs text-slate-500">attempt {s.attempt}</span>}
                   <Badge value={s.status} />
                   {s.decision && <Badge value={s.decision.toUpperCase()} />}
+                  {s.restricted_publication && <RestrictedPublicationBadge />}
                   {s.agent_run_id && (
                     <Link href={`/runs/${s.agent_run_id}`} className="ml-auto text-xs text-noblen-700 hover:underline">
                       Agent run {short(s.agent_run_id)}
                     </Link>
                   )}
                 </div>
+                {s.restricted_publication && s.status === "WAITING" && s.output === null && (
+                  <div className="mt-2">
+                    <RestrictedPayloadNotice />
+                  </div>
+                )}
                 {s.error && <p className="mt-1 text-sm text-red-700">{s.error}</p>}
                 {s.decision_note && <p className="mt-1 text-sm text-slate-600">Note: {s.decision_note}</p>}
                 {s.output && Object.keys(s.output).length > 0 && (

@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, Uuid
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, Text, Uuid, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TenantMixin, TimestampMixin, UUIDMixin
@@ -53,3 +53,10 @@ class Approval(UUIDMixin, TimestampMixin, TenantMixin, Base):
     # request_payload (after re-validation against the tool's schema).
     modified_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # ---- Milestone 9 (ADR-0038) ----
+    # True when this request gates a publication derived from restricted or
+    # unknown provenance. Set when the request is created; never cleared.
+    restricted_publication: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )

@@ -98,6 +98,15 @@ an agent retrieved for that person. Run traces (`/runs`) stay visible with
 | POST | `/approvals/{id}/approve` · `/reject` (optional `{"note"}`) | `agent:approve_actions` |
 | POST | `/approvals/{id}/modify` `{"arguments", "note"}` | `agent:approve_actions` |
 
+Approvals carry `restricted_publication` (Milestone 9): true when the request gates
+an agent publication derived from restricted or unknown sources, which
+`require_approval_to_publish_restricted` makes wait for approval. Such a request
+is decided (approve, modify, reject) only by an approver who can read every source
+it derives from at the moment of the decision; anyone else gets 403 `not_eligible`.
+In list, get and decision responses, any other approver sees the request with
+`payload_withheld: true`, `request_payload: {}` and no `modified_payload` or
+`decision_note`.
+
 Agent execution returns a normalized result whose `status` is `completed`,
 `awaiting_approval` or `escalated`, with a `run_id` (and `escalation_reason` when
 escalated). See [`architecture/agents.md`](./architecture/agents.md).
@@ -120,6 +129,10 @@ escalated). See [`architecture/agents.md`](./architecture/agents.md).
 | POST | `/notifications/{id}/read` · `/notifications/read-all` | any member (own only) |
 
 `PATCH /organizations/current` accepts `require_independent_approval` (separation of duties).
+It also accepts `require_approval_to_publish_restricted` (boolean, default `false`;
+Milestone 9, ADR-0038), returned by `GET /organizations/current`. The setting is
+enforced for agent publications (see Approvals above) and workflow tool steps
+(see Workflows).
 
 ### Memory — `/api/v1/memories` (Noblen AI 3.0, M4)
 | Method | Path | Permission |
@@ -144,6 +157,13 @@ Retention is set with `PATCH /organizations/current` `{"memory_retention_days": 
 | GET | `/workflow-runs?workflow_id=&status=` · `/workflow-runs/{id}` (with step trace) | `workflow:view`; content only for the run's person (below) |
 | POST | `/workflow-runs/{id}/approve` · `/reject` (`{note?}`) | `agent:approve_actions` |
 | POST | `/workflow-runs/{id}/cancel` | `agent:operate` |
+
+Steps carry `restricted_publication` (Milestone 9): true when a tool step waits, or
+waited, at approval because `require_approval_to_publish_restricted` is on and what
+it consumes is restricted or unknown. It is decided before the tool runs; a step that
+already required approval keeps its single decision. Only an approver who can read
+every source the step consumed, at the moment of the decision, sees its request
+(`output`) or decides it; anyone else gets 403 `not_eligible`.
 
 **Run content (ADR-0035, ADR-0037).**
 - Visible to everyone with the view permission: status, steps and their statuses,

@@ -114,6 +114,13 @@ organization.
   `context`, step outputs, and error and decision-note text. Everyone else gets
   those fields as `null` with `content_withheld: true` and a
   `content_withheld_reason`. Approvers see the approval requests they decide.
+- **Restricted publications** (ADR-0038). With
+  `require_approval_to_publish_restricted` on, a tool step that calls a publication
+  sink waits at approval when what it consumes is restricted or unknown. This is
+  decided before the tool runs and marked on the step
+  (`restricted_publication`). A step that already required approval keeps its single
+  decision. Only an approver who can read every source the step consumed sees the
+  request and decides; others get `403 not_eligible`.
 - **Crash recovery.** A run left `RUNNING` by a crashed worker is re-queued when
   it stopped between steps or during a condition or approval step. If it stopped
   mid-agent or mid-tool, it is escalated, never re-executed (ADR-0033).
