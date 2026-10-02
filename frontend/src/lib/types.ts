@@ -132,6 +132,11 @@ export interface Approval {
   modified_payload: Record<string, unknown> | null;
   decision_note: string | null;
   created_at: string;
+  /** The request gates a publication derived from restricted sources (M9). */
+  restricted_publication: boolean;
+  /** True when the server withheld the arguments and note from you (M9.6):
+   *  `request_payload` is then `{}`, and the others are null. */
+  payload_withheld: boolean;
 }
 
 export interface Workflow {
@@ -162,6 +167,8 @@ export interface WorkflowStepRun {
   decision_note: string | null;
   started_at: string | null;
   finished_at: string | null;
+  /** The step gates a publication derived from restricted sources (M9). */
+  restricted_publication: boolean;
 }
 
 export interface WorkflowRun {

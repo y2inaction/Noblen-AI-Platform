@@ -36,6 +36,11 @@ and the project uses Conventional Commits.
   `restricted`. A refused decision is recorded as `agent.` or
   `workflow.approval_decision_refused` with `reason: not_eligible`, and the request
   stays pending. Audit entries carry references and counts only, never content.
+- **Frontend (M9.8):** approvals and workflow runs mark restricted publications.
+  When the API withholds a request (`payload_withheld`, or a marked step without
+  output), the page shows a notice instead of its arguments, offers no "Edit
+  arguments", and reloads after a `not_eligible` refusal. The UI only follows the
+  API; it decides nothing.
 
 ### Milestone 8 — Permission propagation & provenance (ADR-0037)
 - **Run content now follows its sources** (**behavior change**). Agent and workflow

@@ -262,7 +262,7 @@ Each step stops for review.
 - [x] M9.5 workflow path
 - [x] M9.6 eligibility and confidentiality
 - [x] M9.7 audit
-- [ ] M9.8 frontend
+- [x] M9.8 frontend
 - [ ] M9.9 final docs and validation
 
 ### Gates before asking to merge (M9.9)
