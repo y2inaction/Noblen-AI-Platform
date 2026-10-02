@@ -219,13 +219,34 @@ M8 and M9 are not changed. M10 must show:
   local runs.
 - **Schema.** On PostgreSQL the schema comes from Alembic (`upgrade head`), not
   `create_all`, so tests see the real migrations.
-- **Connection role.** M10.2 runs as the existing superuser, and only proves the suite
-  runs on PostgreSQL. From M10.3 the app connects as `noblen_app`, and migrations and
-  fixtures run as the owner.
-- **Isolation between tests:** a fresh database or schema per test module or session,
-  migrated by Alembic; no shared global cleanup (§16, item 4).
-- **CI.** The SQLite job stays. A PostgreSQL job runs the **whole** suite, as the
-  application role from M10.3 on.
+- **Connection role.** From M10.2 (decided after M10.1: option b), tests and the app
+  connect as `noblen_app`, a non-owner role: not a superuser, no `BYPASSRLS`, and it
+  cannot create databases or roles. The administrator (superuser) only creates the
+  role and the databases, and runs migrations. M10.3 adds `noblen_owner`,
+  `noblen_system` and the production configuration.
+- **Isolation between tests:** a fresh database per test, cloned
+  (`CREATE DATABASE ... TEMPLATE`) from one template migrated by Alembic once per
+  session. There is no shared global cleanup (§16, item 4). Per-test databases were
+  chosen over per-module ones, because the existing tests assume an empty database
+  for each test.
+- **CI.** The SQLite job stays. A new job, "Backend tests (PostgreSQL, application
+  role)", runs the **whole** suite this way.
+
+**M10.2 baseline (local PostgreSQL 16 + pgvector, before RLS):**
+- The whole suite: **408 passed** on PostgreSQL as `noblen_app`.
+- The same suite on SQLite: 388 passed, 20 skipped, unchanged.
+- The knowledge tests in the existing CI mode (`KNOWLEDGE_TEST_DATABASE_URL`):
+  26 passed.
+- The role check (`current_user = noblen_app`, not a superuser, no `BYPASSRLS`, owns
+  no tables) runs on the first test of each session.
+- No test databases are left behind.
+- **What PostgreSQL exposed.** 16 tests in `test_registry.py`, `test_runtime.py` and
+  `test_ai_usage.py` built rows that referenced users or organizations that did not
+  exist. SQLite does not enforce foreign keys by default; PostgreSQL does. The test
+  setup now inserts real rows (`create_user`, `create_org` in `tests/conftest.py`).
+  Their assertions are unchanged.
+- **No application code changed.** Nothing in the app needed the superuser or table
+  ownership to work.
 
 ## 13. Validation gates (before ADR-0034 is marked Implemented)
 
@@ -272,8 +293,8 @@ Each step stops for review.
 | Step | Content | Stop point |
 |---|---|---|
 | M10.1 | This contract and the ADR-0034 revision (documentation only) | **stop and report** |
-| M10.2 | PostgreSQL test harness: whole suite on PostgreSQL (still the superuser); CI job | **stop and report the results** |
-| M10.3 | Three roles, configuration, init script, startup check (warn only); tests and CI connect as `noblen_app`; no policies yet, no behavior change | |
+| M10.2 | PostgreSQL test harness: whole suite on PostgreSQL as the non-owner `noblen_app`; CI job | **stop and report the results** |
+| M10.3 | `noblen_owner` and `noblen_system`, configuration, init script, startup check (warn only); no policies yet, no behavior change | |
 | M10.4 | RLS security tests R1–R9, failing by design | **stop and report the failing evidence** |
 | M10.5 | Tenant-session plumbing (§7); `system_session()` and its allow-list | |
 | M10.6 | Cross-tenant paths refactored (§8); behavior unchanged | |
@@ -284,7 +305,7 @@ Each step stops for review.
 ### Checklist
 
 - [ ] M10.1 contract and ADR-0034 revision
-- [ ] M10.2 PostgreSQL test harness
+- [x] M10.2 PostgreSQL test harness
 - [ ] M10.3 roles and configuration
 - [ ] M10.4 RLS security tests (failing)
 - [ ] M10.5 tenant-session plumbing

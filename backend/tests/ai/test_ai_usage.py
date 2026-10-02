@@ -1,6 +1,5 @@
 """Usage metering + cost estimation unit tests (service + pricing)."""
 
-import uuid
 from decimal import Decimal
 
 import pytest
@@ -8,6 +7,7 @@ import pytest
 from app.ai.pricing import pricing_registry
 from app.ai.types import GenerationResponse
 from app.services import ai_usage_service
+from tests.conftest import create_org, create_user
 
 
 def test_pricing_known_model_estimates_cost():
@@ -26,8 +26,8 @@ def test_pricing_unknown_model_returns_none():
 
 @pytest.mark.asyncio
 async def test_record_generation_persists_tokens_and_attribution(db_session):
-    org_id = uuid.uuid4()
-    user_id = uuid.uuid4()
+    org_id = await create_org(db_session)
+    user_id = await create_user(db_session)
     response = GenerationResponse(
         content="ok",
         provider="mock",
@@ -58,8 +58,8 @@ async def test_record_generation_persists_tokens_and_attribution(db_session):
 
 @pytest.mark.asyncio
 async def test_list_usage_is_org_scoped(db_session):
-    org_a = uuid.uuid4()
-    org_b = uuid.uuid4()
+    org_a = await create_org(db_session)
+    org_b = await create_org(db_session)
 
     def _resp(model: str) -> GenerationResponse:
         return GenerationResponse(

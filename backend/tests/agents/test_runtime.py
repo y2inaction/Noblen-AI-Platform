@@ -20,6 +20,7 @@ from app.models.enums import ApprovalStatus
 from app.models.organization import Organization
 from app.models.run import AgentRun
 from app.models.tool import AgentTool, Tool
+from tests.conftest import create_user
 
 
 def _runtime() -> AgentRuntime:
@@ -36,7 +37,7 @@ async def _setup(db, *, tools=()):
     org = Organization(name="Acme", slug=f"acme-{uuid.uuid4().hex[:6]}")
     db.add(org)
     await db.flush()
-    user_id = uuid.uuid4()
+    user_id = await create_user(db)
     await seed_builtin_tools(db)
     agent = await registry.create_agent(db, org.id, user_id, name="Bot")
     for tname in tools:
@@ -124,7 +125,7 @@ async def test_approval_required_pauses_then_resumes(db_session):
     assert roles == ["user", "assistant"]
 
     # Approve and resume.
-    approver = uuid.uuid4()
+    approver = await create_user(db_session)
     approval = await approval_service.approve(db_session, org_id, approval.id, approver)
     resumed = await rt.resume_after_approval(
         db_session, organization_id=org_id, user_id=approver, approval=approval, approved=True
@@ -151,7 +152,7 @@ async def test_rejected_approval_does_not_execute_tool(db_session):
     approval = (
         await db_session.execute(select(Approval).where(Approval.id == result.approval_id))
     ).scalar_one()
-    approver = uuid.uuid4()
+    approver = await create_user(db_session)
     approval = await approval_service.reject(db_session, org_id, approval.id, approver)
     resumed = await rt.resume_after_approval(
         db_session, organization_id=org_id, user_id=approver, approval=approval, approved=False

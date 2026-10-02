@@ -34,6 +34,25 @@ mypy app              # type-check
 pytest                # tests (SQLite-backed)
 ```
 
+### Tests on PostgreSQL, as the application role (Milestone 10)
+The same suite runs on PostgreSQL + pgvector when `TEST_DATABASE_URL` points at an
+administrative (superuser) connection:
+```bash
+TEST_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/postgres pytest
+```
+- **Once per session:** the harness (`tests/pg_harness.py`) creates the non-owner
+  role `noblen_app` if it is missing, then builds a template database migrated by
+  Alembic.
+- **Per test:** it clones a fresh database from that template.
+- **Connections:** tests and the app connect as `noblen_app`, which is not a
+  superuser, owns no tables, cannot create databases or roles, and has no
+  `BYPASSRLS`. The superuser only creates the role and databases and runs
+  migrations.
+- **CI:** the job "Backend tests (PostgreSQL, application role)" runs the suite this
+  way.
+- **Overrides:** `TEST_APP_ROLE` and `TEST_APP_ROLE_PASSWORD` (test-only) change the
+  role's name and password.
+
 ## Frontend (local)
 ```bash
 cd frontend
