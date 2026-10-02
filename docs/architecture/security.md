@@ -113,10 +113,21 @@ Approvers see the requests they decide. The rule is enforced in
 `app/rbac/visibility.py`, not in the UI. The same file also covers the
 approval-decision response, the operations overview and notification bodies.
 
+Restricted publication approval (ADR-0038, Milestone 9). With
+`require_approval_to_publish_restricted` on, a run's call to a publication sink
+waits for an approval when its provenance is restricted or unknown. The sinks are
+tasks, member notifications, agent memory, email, webhooks, calendar, CRM and enabled
+MCP tools. Such a request is decided only by a holder of `agent:approve_actions` who
+can read every source now, re-checked at the decision. Anyone else gets
+`403 not_eligible`, sees the request without its arguments (`payload_withheld`), and
+the refusal is audited (`*.approval_decision_refused`). Audit records carry counts
+and flags, never content.
+
 ## Separation of duties (M2)
 
 `organizations.require_independent_approval` stops initiators from deciding
-their own runs' approvals (`403 independent_approval_required`). It is off by
+their own runs' approvals (agent approvals: `403 independent_approval_required`;
+workflow decisions: `403 permission_denied`). It is off by
 default and toggled by org admins (`org:manage`).
 
 ## Known gaps

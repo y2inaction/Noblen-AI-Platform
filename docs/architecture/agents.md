@@ -52,6 +52,14 @@ every source the run recorded now, including the conversation it read. Otherwise
 and a `content_withheld_reason`. The same applies to `escalation_reason` and
 failed-tool errors on `/runs` and `/runs/{id}`.
 
+Restricted publications (ADR-0038). With `require_approval_to_publish_restricted` on,
+a call to a publication sink whose run provenance is restricted or unknown pauses
+for approval, even when the tool would otherwise run automatically. A tool that
+already requires approval keeps its single request, marked `restricted_publication`.
+A direct run records its conversation, which is private, so with the setting on its
+publications are always gated. Only an approver who can read every source now sees
+the arguments and decides (`payload_withheld` for anyone else).
+
 ## Tool authorization: an intersection
 
 A tool call executes only if all of the following hold:

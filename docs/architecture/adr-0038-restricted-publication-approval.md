@@ -1,6 +1,7 @@
 # ADR-0038 — Approval before publishing restricted-derived content
 
-**Status:** Proposed (Milestone 9, 2026-10). Follows ADR-0036 and ADR-0037.
+**Status:** Implemented (Milestone 9, M9.1–M9.9, 2026-10; PR #7). Follows ADR-0036 and
+ADR-0037.
 Implementation contract: [`milestone-9-restricted-publication.md`](milestone-9-restricted-publication.md).
 
 ## Context
@@ -25,7 +26,7 @@ those arguments are restricted-derived content. Showing them to every holder of
 do today, would itself disclose the content. The approval must therefore be gated on
 the approver's access to the sources, not only on the approval permission.
 
-## Decision (proposed)
+## Decision
 
 1. **An organization setting.** `require_approval_to_publish_restricted`, default
    off, sits next to `require_independent_approval`. When it is off, behavior is
@@ -76,3 +77,57 @@ the approver's access to the sources, not only on the approval permission.
   approvals and workflow step runs.
 - Not done: retraction of published output, workflow approval expiry, per-tool or
   per-organization sink configuration, and any change to Milestone 8.
+
+## Implementation (Milestone 9)
+
+Implemented in steps M9.3–M9.8, each reviewed before the next; validated in M9.9
+(contract §17).
+
+- **Setting** (M9.3): `organizations.require_approval_to_publish_restricted`, migration
+  `5b9e1c3d7a42`. It is read and written through `/organizations/current` under
+  `org:manage`; only a boolean is accepted.
+- **One decision for both paths** (M9.4–M9.5): `app/agents/publication.py` holds the
+  sink list and `is_restricted_publication`. "Restricted" is ADR-0037's
+  `publication_attribution`: a baseline member could not read every source now.
+  Sinks are classified by the handler that runs, never by a tool's display name.
+  - **Agents:** the run's provenance so far is evaluated before the call executes.
+    The binding's own approval is reused and marked (`approvals.restricted_publication`,
+    migration `8e4f2a6c1b97`).
+  - **Workflow tool steps:** the provenance the step consumes is evaluated before the
+    tool runs. The step waits through the existing `WAITING`/decide flow and keeps its
+    marker (`workflow_step_runs.restricted_publication`, migration `c3d5e7f9a1b2`), so
+    a rejection is honoured even if the sources open up meanwhile.
+- **Eligibility and confidentiality** (M9.6): `app/rbac/visibility.py` reuses the M8
+  resolver with no participant exception, so unknown provenance has no eligible
+  approver. Approve, modify, reject and the workflow decision re-check permission and
+  source access at the decision, after the existing separation-of-duties check, and
+  refuse with `403 not_eligible`. Approvals carry `payload_withheld`: an ineligible
+  approver gets `request_payload: {}` and no `modified_payload` or `decision_note`.
+  The workflow approver exception covers a marked step only for an eligible viewer.
+- **Audit** (M9.7), per contract §10:
+  - `agent.approval_requested` and the new `workflow.approval_requested` record
+    `restricted_publication`, `source_counts` and `sources_truncated`.
+  - `*.approval_decided` records `restricted_publication` and the decision-time
+    `restricted`.
+  - The new `*.approval_decision_refused` records the request, the approver and
+    `reason: not_eligible`. It is committed before the 403 is returned.
+- **Frontend** (M9.8): approvals and workflow runs show a "Restricted Publication"
+  badge. A withheld request shows a notice instead of its arguments. The UI follows
+  the API and decides nothing.
+
+### Choices made during implementation
+
+- **Migrations:** one per step (§13 of the contract), instead of the single migration
+  first planned.
+- **Workflow initiator rule:** it keeps its existing `403 permission_denied`. Agent
+  approvals keep `independent_approval_required`.
+- **Publications from direct agent runs:** a direct agent run records its
+  conversation as a source, and a conversation is private to its participants. With
+  the setting on, every publication from a direct agent run is therefore gated.
+
+### Known limits
+
+- Workflow waits do not expire (contract §15.1).
+- Requests created while the setting is off are not marked (§15.2).
+- A workflow tool step is judged on what it consumes. What the tool itself observes
+  while running (for example an integration connection) is recorded after it runs.

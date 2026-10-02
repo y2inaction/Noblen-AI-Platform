@@ -1,4 +1,4 @@
-# Authorization test plan (for ADR-0034 – ADR-0037)
+# Authorization test plan (for ADR-0034 – ADR-0038)
 
 **Status:** Partly implemented. These tests do not exist yet unless marked *(exists)*.
 ADR-0035 is covered by `tests/security/test_run_content_visibility.py` (14 tests, each
@@ -114,3 +114,19 @@ integration:
 | timestamp | `created_at` ≤ `finished_at` |
 | bounds | 501 references → `sources_truncated`, and non-participants are withheld |
 | no duplication | `sources` never contains content text (the canary is absent from the provenance JSON) |
+
+## 8. Restricted publication approval (ADR-0038)
+
+All in `tests/security/test_restricted_publication.py` *(exists, M9.2–M9.7)*.
+
+| Invariant | Assert |
+|---|---|
+| P1 setting off | agent and workflow publications behave as in Milestone 8; no new approval |
+| P2 gate | a restricted or unknown-provenance publication waits, marked, and publishes nothing before an eligible approval (agent and workflow; NULL, empty, truncated, malformed, missing, cross-tenant, cyclic, over-depth) |
+| P3 one request | an approval the tool or step already required is reused and marked |
+| P4 eligibility | `agent:approve_actions` alone is not enough: an ineligible approver gets `payload_withheld` / no step request on every endpoint, and `403 not_eligible` on approve, modify and reject |
+| P5 decision time | revocation before the decision blocks it; a later grant permits it; a source deleted meanwhile fails closed |
+| P6 outcomes | approval publishes exactly once (second decision 409); rejection and agent expiry publish nothing (workflow cancellation: M9.9 live check) |
+| P7 both paths | each case that applies to both paths has an agent and a workflow test (workflow waits have no expiry) |
+| P8 audit | request, decision and refusal events carry `restricted_publication` and counts; no canary in any audit row |
+| P9 Milestone 8 | the read rule and `*.tool_executed` attribution are unchanged |

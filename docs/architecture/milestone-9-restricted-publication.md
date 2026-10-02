@@ -1,7 +1,7 @@
 # Milestone 9: Restricted publication approval (implementation contract)
 
-**Status:** Proposed (M9.1, documentation only). It specifies ADR-0038, which is
-**Proposed**. It builds on ADR-0035 and ADR-0036, and on ADR-0037 as implemented by
+**Status:** Implemented (M9.1–M9.9, PR #7). It specifies ADR-0038, now
+**Implemented** after every gate in §14 passed (§17). It builds on ADR-0035 and ADR-0036, and on ADR-0037 as implemented by
 Milestone 8 ([`milestone-8-provenance.md`](milestone-8-provenance.md)). Milestone 8 is
 closed and is not changed by this milestone. RLS (ADR-0034) remains out of scope.
 
@@ -263,7 +263,7 @@ Each step stops for review.
 - [x] M9.6 eligibility and confidentiality
 - [x] M9.7 audit
 - [x] M9.8 frontend
-- [ ] M9.9 final docs and validation
+- [x] M9.9 final docs and validation
 
 ### Gates before asking to merge (M9.9)
 
@@ -299,3 +299,60 @@ Each step stops for review.
 - Per-organization or per-tool configuration of the sink list.
 - Content labels, classifiers, encryption changes, policy engines.
 - New product features and unrelated refactoring.
+
+## 17. Validation record (M9.9)
+
+Run on the M9.8 head `a77659f`, before the documentation-only M9.9 commit.
+
+| Gate (§14) | Result |
+|---|---|
+| ruff, format, mypy | clean |
+| Full SQLite suite | 388 passed, 20 skipped |
+| Full PostgreSQL + pgvector suite | 408 passed |
+| M9 security tests (`tests/security/test_restricted_publication.py`) | 62 passed |
+| Migrations `5b9e1c3d7a42`, `8e4f2a6c1b97`, `c3d5e7f9a1b2`: upgrade → downgrade → upgrade (PostgreSQL) | passed; rows created before M9 read `false`; the downgrade removes all three columns; `alembic check` shows only the known `agents` / `document_embeddings` drift |
+| Frontend lint, typecheck, build | passed |
+| Browser walkthrough | existing `frontend/e2e/smoke.mjs` passed unchanged, with no console errors or failed API calls |
+| Live cross-role check of the §12 invariants | 30/30 checks passed (see below) |
+| CI on the final head | recorded on PR #7 |
+
+**Live cross-role check.** It ran on a backend and worker with the mock model, on
+PostgreSQL. The people involved:
+- Alice (MEMBER) runs;
+- Mia and Max (MANAGER) are approvers; only Mia can read the restricted document;
+- Vic is a VIEWER.
+
+Results, by invariant:
+- **P1:** with the setting off, restricted agent and workflow publications complete
+  without approval.
+- **P2 and P7:** with it on, both paths wait, are marked, and publish nothing before
+  the decision.
+- **P3:** an approval the tool already required is reused, marked, with one request.
+- **P4:**
+  - Max sees the agent request with `payload_withheld` and the workflow step without
+    its request, in both the list and the detail.
+  - Approve, reject and modify are refused with `403 not_eligible` and no content.
+  - Vic has no approvals access.
+- **P5:**
+  - Agent path: a later grant (joining the conversation) makes Mia eligible.
+  - Workflow path: revoking Mia's document grant blocks her decision, and re-granting
+    it lets her decide.
+- **P6:**
+  - Approval publishes exactly once; a second decision gets 409.
+  - Rejection, expiry and cancellation publish nothing.
+- **P8:**
+  - No canary appears in any audit row of the organization.
+  - The request, decision and refusal events are present on both paths.
+  - Refusals record `reason: not_eligible` and no source.
+- **P9:**
+  - The M8 read rule still withholds the agent run from Max (`restricted_sources`).
+  - `*.tool_executed` keeps the M8.8 attribution.
+
+SQL was used only to:
+- add members (there is no invite endpoint);
+- join a conversation;
+- set an upstream step's provenance (retrieval needs real embeddings);
+- expire an approval;
+- read the audit trail.
+
+Every read and decision went through the API.

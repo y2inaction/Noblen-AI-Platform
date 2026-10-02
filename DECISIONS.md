@@ -426,7 +426,7 @@ deferred to Milestone 9.
 is four columns and one bulk check per non-participant content read.
 
 ### ADR-0038 — Approval before publishing restricted-derived content
-**Status:** Proposed (Milestone 9, 2026-10).
+**Status:** Implemented (Milestone 9, 2026-10; PR #7).
 Details: [`docs/architecture/adr-0038-restricted-publication-approval.md`](docs/architecture/adr-0038-restricted-publication-approval.md).
 Implementation contract: [`docs/architecture/milestone-9-restricted-publication.md`](docs/architecture/milestone-9-restricted-publication.md).
 **Decision:** An organization setting, `require_approval_to_publish_restricted` (default
