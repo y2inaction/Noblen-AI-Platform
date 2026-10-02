@@ -13,6 +13,7 @@ from app.agents.errors import (
 from app.agents.lifecycle import can_transition
 from app.core.exceptions import ValidationError
 from app.models.enums import AgentStatus
+from tests.conftest import create_user
 
 
 async def _make_org(db_session):
@@ -21,7 +22,7 @@ async def _make_org(db_session):
     org = Organization(name="Acme", slug=f"acme-{uuid.uuid4().hex[:6]}")
     db_session.add(org)
     await db_session.flush()
-    return org.id, uuid.uuid4()
+    return org.id, await create_user(db_session)
 
 
 @pytest.mark.asyncio

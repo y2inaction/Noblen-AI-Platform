@@ -1,6 +1,8 @@
 """Fixtures for Knowledge/RAG tests — these run against a REAL PostgreSQL + pgvector.
 
 The database URL comes from ``KNOWLEDGE_TEST_DATABASE_URL`` (default: local dev pg).
+With ``TEST_DATABASE_URL`` set, they use the PostgreSQL application-role harness
+instead (``tests/pg_harness.py``).
 If PostgreSQL/pgvector is unavailable, the whole module is skipped so the rest of the
 suite (SQLite) is unaffected. Mock embeddings are 1536-dim to match the vector column.
 """
@@ -26,6 +28,7 @@ from app.core.config import settings
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
+from tests import pg_harness
 
 PG_URL = os.environ.get(
     "KNOWLEDGE_TEST_DATABASE_URL",
@@ -60,7 +63,13 @@ async def _pg_available() -> bool:
 
 
 @pytest_asyncio.fixture
-async def pg_engine():
+async def pg_engine(pg):
+    if pg is not None:
+        # The PostgreSQL application-role harness (M10.2): a fresh migrated
+        # database, used as `noblen_app`.
+        async with pg_harness.fresh_app_engine(pg) as engine:
+            yield engine
+        return
     if not await _pg_available():
         pytest.skip("PostgreSQL + pgvector not available for Knowledge/RAG tests")
     engine = create_async_engine(PG_URL)

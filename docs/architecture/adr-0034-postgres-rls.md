@@ -1,6 +1,8 @@
 # ADR-0034 — PostgreSQL Row-Level Security as a second tenant boundary
 
-**Status:** Proposed (security review, 2026-09). Not implemented.
+**Status:** Proposed (security review, 2026-09; revised in place for Milestone 10,
+2026-10). Not implemented.
+Implementation contract: [`milestone-10-rls.md`](milestone-10-rls.md).
 **Relates to:** ADR-0003 (shared schema + `organization_id`), ADR-0025 (DB-queue worker),
 ADR-0033 (stale-run recovery). Summary entry in `DECISIONS.md`.
 
@@ -8,9 +10,14 @@ ADR-0033 (stale-run recovery). Summary entry in `DECISIONS.md`.
 
 Tenant isolation today is enforced only in application code:
 
-- Each tenant table carries `organization_id` (`TenantMixin`). There are 27 such tables,
-  plus `tools` (nullable org: built-ins are global), `agent_tools`, `team_members`,
-  `organization_members` and `audit_logs` (nullable org for auth events).
+- Each tenant table carries `organization_id` (`TenantMixin`). There are 28 such tables
+  at `ea61a85`, `team_members` included. The others:
+  - `tools` and `roles` have a nullable organization: built-ins are global;
+  - `organization_members` has a non-null organization;
+  - `audit_logs` has a nullable organization, for authentication events;
+  - `agent_tools` has none and reaches its tenant through `agents`.
+
+  The full classification is in the Milestone 10 contract, §5.
 - Every service query goes through `tenant_scoped(stmt, Model, org)` or an explicit
   `organization_id ==` filter.
 - `get_tenant_context` (`app/api/deps.py`) resolves the active organization from
@@ -32,9 +39,16 @@ RLS makes PostgreSQL enforce the same rule a second time.
 | Workflow worker `tick`, `claim_next_workflow_run`, `queue_due_schedules`, `wake_finished_agent_steps` | Same | No | Yes |
 | Recovery (`recover_agent_runs`, `recover_workflow_runs`) and memory `purge_expired` | Same | No | Yes |
 | Run execution (`runtime.process_queued`, `WorkflowEngine.advance`) | New session per run | Yes (run row). It **commits many times** per run (per step, per tool). | No |
+| Registration slug check (`_unique_slug`) | `get_db` | No | Yes: reads `organizations` across tenants |
+| Startup tool seeding | `SessionLocal()` | n/a | Writes global (`organization_id IS NULL`) tools |
 | Alembic migrations | Owner connection | n/a | Yes (DDL and backfills) |
 | Administrative operations (org settings, member roles, knowledge grants) | `get_db` | Yes (tenant-scoped endpoints) | No. No cross-tenant admin API exists, and platform superusers still need membership. |
-| Tests | SQLite by default; PostgreSQL job in CI | n/a | Fixtures create many orgs |
+| Tests | SQLite for the whole suite; only `tests/knowledge/` (about 20 tests) on PostgreSQL, as the superuser | n/a | Fixtures create many orgs |
+
+Revision fact (`ea61a85`): recovery (`recover_agent_runs`, `recover_workflow_runs`) and
+`queue_due_schedules` do not only claim. They also write run steps, notifications,
+audit rows and new runs for many organizations in the same cross-tenant session.
+Run claims are already two-step (claim an id, then run it in a fresh session).
 
 Deployment fact: docker-compose connects the app as `POSTGRES_USER`. That role is the
 container's **superuser** and the **owner** of every table. Superusers always bypass
@@ -99,8 +113,11 @@ prerequisite.
    - memory purge;
    - the webhook id → organization lookup.
 
-   Each call returns **identifiers only** (`run_id`, `organization_id`). The work
-   itself then happens in a tenant session with the organization set. A test asserts
+   Each call claims, looks up or moves status, and returns **identifiers only**
+   (`run_id`, `organization_id`). The work itself then happens in a tenant session
+   with the organization set. Recovery and schedule queueing are refactored to this
+   shape. The registration slug check needs no cross-tenant read: it relies on the
+   unique constraint and retries on collision (contract §16). A test asserts
    that `system_session` is referenced only from an allow-list of modules.
 
 5. **Registration.** The new organization's UUID is generated in Python. The session
@@ -151,11 +168,33 @@ prerequisite.
 | A forgotten policy on a new table. | Metadata-driven test: every `organization_id` table has `relrowsecurity` and a policy. |
 | Rollback. | Downgrade drops the policies and disables RLS. Roles stay. |
 
-## Rollout order
+## Rollout order (revised for Milestone 10)
 
-1. Roles, configuration, startup check (warn only).
-2. Session event plus `system_session()`, with the worker, hooks and auth refactored to
-   use them (no policies yet; behavior unchanged).
-3. PostgreSQL test suite running as `noblen_app`.
-4. Migration enabling policies (without `FORCE`); CI green.
-5. `FORCE`, with the startup check becoming fatal in production.
+The steps and stop points are in the Milestone 10 contract, §15.
+
+1. A PostgreSQL test harness: the whole suite on PostgreSQL. Policies cannot be tested
+   on SQLite, and the suite does not run on PostgreSQL today.
+2. Roles, configuration, startup check (warn only). Tests and CI connect as
+   `noblen_app`.
+3. RLS security tests, failing by design.
+4. The session event plus `system_session()`.
+5. Cross-tenant paths refactored, with no behavior change.
+6. Policy migration(s), enabled. Policies bind `noblen_app` from here, because it is
+   neither superuser nor owner.
+7. `FORCE`, the data-migration helper, and the startup check becoming fatal in
+   production.
+
+Whether the policies ship as one migration or several by class is decided from the
+table inventory (contract §16).
+
+## Revision for Milestone 10 (2026-10)
+
+This ADR was written before Milestones 8 and 9. Reviewed against `main` at `ea61a85`,
+the decision stands: three roles, transaction-local settings, fail-closed tenant-only
+policies, and a small system bypass. The revision changes:
+- the facts: 28 tenant tables; recovery and schedules write across tenants; the slug
+  check and tool seeding; tests are mostly SQLite;
+- the rollout: the PostgreSQL test harness comes first;
+- the bypass: claims, lookups and status moves only, with the work in tenant sessions.
+
+Milestones 8 and 9 stay in the application and are shown to be unchanged under RLS.

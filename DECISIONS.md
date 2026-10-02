@@ -370,8 +370,9 @@ or creates a duplicate task. The cost is human attention after a crash, and up t
 idempotency keys) is left for later.
 
 ### ADR-0034 — PostgreSQL Row-Level Security as a second tenant boundary
-**Status:** Proposed (security review, 2026-09). Not implemented.
+**Status:** Proposed (security review, 2026-09; revised for Milestone 10, 2026-10). Not implemented.
 Details: [`docs/architecture/adr-0034-postgres-rls.md`](docs/architecture/adr-0034-postgres-rls.md).
+Implementation contract: [`docs/architecture/milestone-10-rls.md`](docs/architecture/milestone-10-rls.md).
 **Decision:** Enforce `organization_id` in PostgreSQL as well as in the application.
 The API and tenant work use a non-owner `noblen_app` role without `BYPASSRLS`. The
 tenant is set per transaction with `set_config(..., true)` from an `after_begin`
