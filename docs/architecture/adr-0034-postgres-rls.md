@@ -116,8 +116,8 @@ prerequisite.
    Each call claims, looks up or moves status, and returns **identifiers only**
    (`run_id`, `organization_id`). The work itself then happens in a tenant session
    with the organization set. Recovery and schedule queueing are refactored to this
-   shape. The registration slug check should need no cross-tenant read. Proposed: rely
-   on the unique constraint and retry (contract §16, still to be decided). A test asserts
+   shape. The registration slug check needs no cross-tenant read: it relies on the
+   unique constraint and retries on collision (contract §16). A test asserts
    that `system_session` is referenced only from an allow-list of modules.
 
 5. **Registration.** The new organization's UUID is generated in Python. The session

@@ -33,7 +33,7 @@ almost entirely on SQLite.
 | M8 / M9 | Not redesigned; shown to remain correct under RLS |
 | Frozen M8/M9 wording | Not changed by M10 (§16, item 8) |
 
-Policy migration packaging and the other choices in §16 are **not** decided yet.
+The remaining choices are resolved in §16. Only policy migration packaging stays open, until M10.7.
 
 ## 3. Baseline facts (`main` at `ea61a85`)
 
@@ -99,7 +99,7 @@ Rules:
 - A metadata test fails if a class-T, H or S table has no enabled, forced policy
   (from M10.7).
 - New tables must be classified when they are added.
-- `agent_tools` has no settled approach yet (§16, item 2).
+- `agent_tools` is isolated through its agent (§16, item 2).
 
 ## 6. Database roles
 
@@ -156,9 +156,9 @@ then runs in a tenant session.
 | Stale-run recovery (`recover_agent_runs`, `recover_workflow_runs`) | Locks stale runs **and writes steps, notifications and audit rows** for many organizations | Claim ids in the system session; escalate each in a tenant session |
 | Memory purge (`purge_expired`) | Reads every organization's retention setting, then deletes per organization, all in one session | List organization ids and retention in the system session; delete in each tenant's session |
 | Webhook trigger (`/hooks/workflows/{id}`) | Loads the workflow by id before the tenant is known | Look up the organization by workflow id in the system session; verify and queue in a tenant session |
-| Registration (`_unique_slug`) | Reads `organizations` across tenants to find a free slug | No cross-tenant read (§16, item 3) |
+| Registration (`_unique_slug`) | Reads `organizations` across tenants to find a free slug | No cross-tenant read: the unique constraint plus a retry on collision (§16, item 3) |
 | Login, refresh, `/auth/me` | Read a user's memberships before a tenant is set | Allowed by the `organization_members` and `organizations` policies (§9), not the system role |
-| Startup tool seeding | Writes global (`organization_id IS NULL`) tools on the app's connection | System session or migration (§16, item 6) |
+| Startup tool seeding | Writes global (`organization_id IS NULL`) tools on the app's connection | Through `system_session()` (§16, item 6) |
 
 Each refactor keeps behavior unchanged. Existing tests already cover these paths.
 
@@ -176,7 +176,9 @@ Policy shapes, per class:
   - `organization_members`: `organization_id = <current> OR user_id = <app.user_id>`.
   - `audit_logs`: an organization match, plus inserting rows with no organization
     `WITH CHECK (organization_id IS NULL AND user_id = <app.user_id>)`.
-- **J:** decided in §16, item 2.
+- **J:** `agent_tools`: `USING` and `WITH CHECK` with `EXISTS (SELECT 1 FROM agents
+  WHERE agents.id = agent_tools.agent_id AND agents.organization_id = <current>)`
+  (§16, item 2).
 
 Rollout:
 1. Policies are created and enabled (M10.7). From then on they bind `noblen_app`.
@@ -220,7 +222,8 @@ M8 and M9 are not changed. M10 must show:
 - **Connection role.** M10.2 runs as the existing superuser, and only proves the suite
   runs on PostgreSQL. From M10.3 the app connects as `noblen_app`, and migrations and
   fixtures run as the owner.
-- **Isolation between tests:** decided in §16, item 4.
+- **Isolation between tests:** a fresh database or schema per test module or session,
+  migrated by Alembic; no shared global cleanup (§16, item 4).
 - **CI.** The SQLite job stays. A PostgreSQL job runs the **whole** suite, as the
   application role from M10.3 on.
 
@@ -290,35 +293,28 @@ Each step stops for review.
 - [ ] M10.8 `FORCE` and fatal startup check
 - [ ] M10.9 final docs and validation
 
-## 16. Decisions still needed before implementation
+## 16. Decisions (resolved after M10.1 review, 2026-10)
 
-1. **Policy migration packaging.** One migration for all policies, or several by class
-   (§5). Proposed: decide at M10.7, from the inventory and M10.4's results.
-2. **`agent_tools` (class J).** Options:
-   - (a) a policy through `EXISTS` on `agents` in the current organization;
-   - (b) add `organization_id` (a schema change and backfill);
-   - (c) no RLS, since rows are tool bindings with no content.
-
-   Proposed: (a).
-3. **Registration slug uniqueness.** Options:
-   - (a) rely on the unique constraint and retry with a suffix;
-   - (b) a system-session slug lookup.
-
-   Proposed: (a). It needs no cross-tenant read.
-4. **Test isolation on PostgreSQL.** Options:
-   - (a) `TRUNCATE` all tables between tests;
-   - (b) a fresh database per test module.
-
-   Proposed: (a), for speed.
-5. **CI shape.** Keep the SQLite job and add the PostgreSQL whole-suite job (proposed),
-   or replace SQLite.
-6. **Writer of global rows.** Startup tool seeding through `system_session()`
-   (proposed), or only in a migration.
-7. **`roles` (class H).** Proposed: apply the class-H policy and document that no
-   organization rows exist today. No custom-role feature.
-8. **Old M8/M9 wording.** The "full PostgreSQL + pgvector suite" wording in the frozen
-   M8 and M9 validation records overstates PostgreSQL coverage (§3). It is not changed
-   by M10. Whether and when to correct it is a separate decision.
+1. **Policy migration packaging.** Still open by design. It is decided at M10.7, from
+   the actual policy inventory and M10.4's results: one migration, or several by class.
+2. **`agent_tools` (class J).** Tenant isolation goes through the row's agent: a policy
+   with `EXISTS` on `agents` in the current organization. No `organization_id` column
+   is added for RLS.
+3. **Registration slug uniqueness.** Rely on the database's unique constraint and
+   handle a collision by retrying with a suffix. No system-session lookup and no
+   cross-tenant read.
+4. **Test isolation on PostgreSQL.** A fresh PostgreSQL database or schema per test
+   module or session, where practical, migrated by Alembic. No shared global cleanup
+   between tests.
+5. **CI shape.** Keep the SQLite job for the fast suite, and add the full PostgreSQL
+   suite run as the application role. SQLite is not replaced.
+6. **Writer of global rows.** Startup tool seeding runs through `system_session()`
+   (the system role).
+7. **`roles` (class H).** Keep the hybrid classification: global rows plus
+   organization rows, with the class-H policy. Document that no organization rows
+   exist today. No custom-role feature.
+8. **Old M8/M9 wording.** The M8 and M9 records stay frozen. Correcting the "full
+   PostgreSQL + pgvector suite" wording (§3) is a separate decision, outside M10.
 
 ## 17. Out of scope
 
