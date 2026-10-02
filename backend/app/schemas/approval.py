@@ -35,6 +35,9 @@ class ApprovalOut(BaseModel):
     decision_note: str | None = None
     # Milestone 9 (ADR-0038): the request gates a restricted publication.
     restricted_publication: bool = False
+    # M9.6: true when `request_payload` (now {}), `modified_payload` and
+    # `decision_note` are withheld because the viewer may not decide this request.
+    payload_withheld: bool = False
 
 
 class ApprovalListOut(BaseModel):

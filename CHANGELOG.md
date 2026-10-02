@@ -23,8 +23,12 @@ and the project uses Conventional Commits.
   on the provenance the step consumes, before the tool runs. The step waits through
   the existing `WAITING`/decide flow, one decision per step (a step that already
   required approval is reused), and a rejection publishes nothing. Migration
-  `c3d5e7f9a1b2` adds `workflow_step_runs.restricted_publication`. Approver
-  eligibility and payload confidentiality come next (M9.6).
+  `c3d5e7f9a1b2` adds `workflow_step_runs.restricted_publication`.
+- **Approvers (M9.6):** a restricted publication is decided only by a holder of
+  `agent:approve_actions` who can read every source it derives from, checked
+  again at the decision; anyone else gets 403 `not_eligible`. The API withholds
+  its arguments from other approvers (`payload_withheld` on approvals; the step's
+  request on workflow runs), so they see only that it exists.
 
 ### Milestone 8 — Permission propagation & provenance (ADR-0037)
 - **Run content now follows its sources** (**behavior change**). Agent and workflow

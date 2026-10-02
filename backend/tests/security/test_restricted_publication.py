@@ -31,6 +31,8 @@ from sqlalchemy import delete, select, update
 from app.models.approval import Approval
 from app.models.audit import AuditLog
 from app.models.conversation import ConversationParticipant
+from app.models.knowledge import KnowledgeDocument
+from app.models.membership import OrganizationMember
 from app.models.work import Task
 from app.models.workflow import WorkflowStepRun
 from tests.agents.test_controlled_autonomy import calls, text
@@ -1209,3 +1211,179 @@ async def test_independent_approval_applies_to_a_restricted_workflow_publication
     assert peer.status_code == 200, peer.text
     await _drain(session_factory, runtime)
     assert len(await _tasks(session_factory, secret)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# M9.6: approver eligibility and payload protection, end to end
+# --------------------------------------------------------------------------- #
+async def _reads(client, auth, paths: list[str]) -> str:
+    """Every response body an approver can fetch, joined, with their statuses."""
+    bodies = []
+    for path in paths:
+        resp = await client.get(path, headers=_h(auth))
+        bodies.append(f"{path} {resp.status_code} {resp.text}")
+    return "\n".join(bodies)
+
+
+async def test_an_ineligible_agent_approver_gets_no_payload_from_any_endpoint(
+    client, env, provider, session_factory
+):
+    team = await _team(client, session_factory, "m96-agent")
+    await _enable(client, team["owner"])
+    secret = _canary("secret")
+    result = await _agent_publication(client, provider, team, "alice", secret)
+    approval_id = _gated(result)
+
+    # Max holds agent:approve_actions; that alone is not enough.
+    single = (await client.get(f"/api/v1/approvals/{approval_id}", headers=_h(team["max"]))).json()
+    assert single["status"] == "PENDING" and single["tool_name"] == "create_task"
+    assert single["restricted_publication"] is True and single["payload_withheld"] is True
+    assert single["request_payload"] == {} and single["modified_payload"] is None
+    seen = await _reads(
+        client,
+        team["max"],
+        [
+            "/api/v1/approvals",
+            f"/api/v1/approvals/{approval_id}",
+            "/api/v1/runs",
+            f"/api/v1/runs/{result['run_id']}",
+            f"/api/v1/conversations/{result['conversation_id']}",
+            f"/api/v1/conversations/{result['conversation_id']}/messages",
+            "/api/v1/notifications",
+            "/api/v1/operations/overview",
+        ],
+    )
+    assert secret not in seen
+
+    # Every way to decide is refused, without content; nothing changes.
+    for path, body in (
+        ("approve", None),
+        ("reject", None),
+        ("modify", {"arguments": {"title": "edited"}}),
+    ):
+        refused = await client.post(
+            f"/api/v1/approvals/{approval_id}/{path}", headers=_h(team["max"]), json=body
+        )
+        assert refused.status_code == 403, refused.text
+        assert refused.json()["error"]["code"] == "not_eligible"
+        assert secret not in refused.text
+    [approval] = await _approvals(session_factory, result["run_id"])
+    assert approval.status == "PENDING" and approval.approved_by is None
+    assert await _tasks(session_factory, secret) == []
+
+    # An eligible approver sees the payload and decides; her note stays with
+    # the content, so Max sees neither.
+    await _participant(session_factory, result["conversation_id"], team["mia"], add=True)
+    mine = (await client.get(f"/api/v1/approvals/{approval_id}", headers=_h(team["mia"]))).json()
+    assert mine["payload_withheld"] is False and mine["request_payload"] == {"title": secret}
+    note = _canary("note")
+    provider.queue(text("Created."))
+    approved = await client.post(
+        f"/api/v1/approvals/{approval_id}/approve", headers=_h(team["mia"]), json={"note": note}
+    )
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["approval"]["decision_note"] == note
+    after = await client.get(f"/api/v1/approvals/{approval_id}", headers=_h(team["max"]))
+    assert after.json()["status"] == "APPROVED"
+    assert secret not in after.text and note not in after.text
+    assert len(await _tasks(session_factory, secret)) == 1
+
+
+async def test_an_ineligible_workflow_approver_gets_no_payload_from_any_endpoint(
+    client, env, runtime, session_factory
+):
+    team = await _team(client, session_factory, "m96-wf")
+    await _enable(client, team["owner"])
+    doc = await _restricted_doc(session_factory, client, team, readers=["alice", "mia"])
+    workflow_id = await _workflow(client, team["owner"])
+    secret = _canary("secret")
+    run_id = await _to_publication(
+        client, session_factory, runtime, team, workflow_id, secret, [_doc_ref(doc)]
+    )
+    await _waiting(client, team, run_id)
+
+    theirs = (await client.get(f"/api/v1/workflow-runs/{run_id}", headers=_h(team["max"]))).json()
+    log = _step(theirs, "log")
+    assert log["status"] == "WAITING" and log["restricted_publication"] is True
+    assert log["output"] is None
+    seen = await _reads(
+        client,
+        team["max"],
+        [
+            "/api/v1/workflow-runs",
+            f"/api/v1/workflow-runs/{run_id}",
+            "/api/v1/approvals",
+            "/api/v1/notifications",
+            "/api/v1/operations/overview",
+        ],
+    )
+    assert secret not in seen
+    for path in ("approve", "reject"):
+        refused = await client.post(
+            f"/api/v1/workflow-runs/{run_id}/{path}", headers=_h(team["max"])
+        )
+        assert refused.status_code == 403, refused.text
+        assert refused.json()["error"]["code"] == "not_eligible"
+        assert secret not in refused.text
+    assert (await _run(client, team["alice"], run_id))["status"] == "WAITING"
+
+    # Mia (granted) receives the arguments she is asked to decide.
+    hers = await _run(client, team["mia"], run_id)
+    assert _step(hers, "log")["output"]["details"]["arguments"]["title"] == secret
+    assert await _tasks(session_factory, secret) == []
+
+
+async def test_a_source_deleted_before_the_decision_fails_closed(
+    client, env, runtime, session_factory
+):
+    team = await _team(client, session_factory, "m96-deleted")
+    await _enable(client, team["owner"])
+    doc = await _restricted_doc(session_factory, client, team, readers=["alice", "mia"])
+    workflow_id = await _workflow(client, team["owner"])
+    secret = _canary("secret")
+    run_id = await _to_publication(
+        client, session_factory, runtime, team, workflow_id, secret, [_doc_ref(doc)]
+    )
+    await _waiting(client, team, run_id)
+    async with session_factory() as s:
+        await s.execute(delete(KnowledgeDocument).where(KnowledgeDocument.id == uuid.UUID(doc)))
+        await s.commit()
+    for person in ("mia", "owner"):
+        refused = await client.post(
+            f"/api/v1/workflow-runs/{run_id}/approve", headers=_h(team[person])
+        )
+        assert refused.status_code == 403, refused.text
+        assert secret not in refused.text
+        assert (
+            secret
+            not in (
+                await client.get(f"/api/v1/workflow-runs/{run_id}", headers=_h(team[person]))
+            ).text
+        )
+    assert (await _run(client, team["alice"], run_id))["status"] == "WAITING"
+    assert await _tasks(session_factory, secret) == []
+
+
+async def test_an_approver_who_loses_the_permission_cannot_decide(
+    client, env, provider, session_factory
+):
+    team = await _team(client, session_factory, "m96-demoted")
+    await _enable(client, team["owner"])
+    secret = _canary("secret")
+    result = await _agent_publication(client, provider, team, "alice", secret)
+    approval_id = _gated(result)
+    await _participant(session_factory, result["conversation_id"], team["mia"], add=True)
+    async with session_factory() as s:
+        await s.execute(
+            update(OrganizationMember)
+            .where(
+                OrganizationMember.user_id == _uid(team["mia"]),
+                OrganizationMember.organization_id == uuid.UUID(team["org"]),
+            )
+            .values(role_name="MEMBER")
+        )
+        await s.commit()
+    refused = await _approve(client, team["mia"], approval_id)
+    assert refused.status_code == 403, refused.text
+    assert secret not in refused.text
+    assert await _tasks(session_factory, secret) == []

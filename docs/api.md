@@ -100,8 +100,12 @@ an agent retrieved for that person. Run traces (`/runs`) stay visible with
 
 Approvals carry `restricted_publication` (Milestone 9): true when the request gates
 an agent publication derived from restricted or unknown sources, which
-`require_approval_to_publish_restricted` makes wait for approval. Approver
-eligibility and payload confidentiality for these requests are not implemented yet.
+`require_approval_to_publish_restricted` makes wait for approval. Such a request
+is decided (approve, modify, reject) only by an approver who can read every source
+it derives from at the moment of the decision; anyone else gets 403 `not_eligible`.
+In list, get and decision responses, any other approver sees the request with
+`payload_withheld: true`, `request_payload: {}` and no `modified_payload` or
+`decision_note`.
 
 Agent execution returns a normalized result whose `status` is `completed`,
 `awaiting_approval` or `escalated`, with a `run_id` (and `escalation_reason` when
@@ -157,8 +161,9 @@ Retention is set with `PATCH /organizations/current` `{"memory_retention_days": 
 Steps carry `restricted_publication` (Milestone 9): true when a tool step waits, or
 waited, at approval because `require_approval_to_publish_restricted` is on and what
 it consumes is restricted or unknown. It is decided before the tool runs; a step that
-already required approval keeps its single decision. Approver eligibility and payload
-confidentiality are not implemented yet.
+already required approval keeps its single decision. Only an approver who can read
+every source the step consumed, at the moment of the decision, sees its request
+(`output`) or decides it; anyone else gets 403 `not_eligible`.
 
 **Run content (ADR-0035, ADR-0037).**
 - Visible to everyone with the view permission: status, steps and their statuses,

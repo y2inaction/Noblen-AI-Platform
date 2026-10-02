@@ -260,7 +260,7 @@ Each step stops for review.
 - [x] M9.3 organization setting
 - [x] M9.4 agent path
 - [x] M9.5 workflow path
-- [ ] M9.6 eligibility and confidentiality
+- [x] M9.6 eligibility and confidentiality
 - [ ] M9.7 audit
 - [ ] M9.8 frontend
 - [ ] M9.9 final docs and validation

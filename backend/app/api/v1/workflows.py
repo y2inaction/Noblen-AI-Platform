@@ -18,6 +18,7 @@ from app.models.enums import WorkflowRunStatus, WorkflowStatus
 from app.models.organization import Organization
 from app.rbac.permissions import Permission, role_has_permission
 from app.rbac.visibility import (
+    eligible_for_restricted,
     present_workflow_run,
     present_workflow_run_detail,
     present_workflow_runs,
@@ -288,6 +289,17 @@ async def _decide(
     if org is not None and org.require_independent_approval and run.initiated_by == ctx.user.id:
         raise PermissionDeniedError(
             "This organization requires someone other than the run's initiator to decide."
+        )
+    # A restricted publication is decided only by an approver who can read every
+    # source the step consumed, re-checked now (M9.6, ADR-0038 decisions A and E).
+    pending = await service.pending_decision(db, run)
+    if pending.restricted_publication and not await eligible_for_restricted(
+        db, ctx.viewer, ctx.organization_id, pending.sources, pending.sources_truncated
+    ):
+        raise PermissionDeniedError(
+            "You can't decide this step: it publishes content derived from sources "
+            "you can't currently read.",
+            error_code="not_eligible",
         )
     run = await service.decide(
         db, ctx.organization_id, run_id, ctx.user.id, approve=approve, note=body.note
