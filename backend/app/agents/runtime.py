@@ -857,7 +857,14 @@ class AgentRuntime:
                 organization_id=run.organization_id,
                 target_type="approval",
                 target_id=str(approval.id),
-                metadata={"tool": tool_call.name, "run_id": str(run.id)},
+                metadata={
+                    "tool": tool_call.name,
+                    "run_id": str(run.id),
+                    # M9.7: whether the request gates a restricted publication,
+                    # and what the run derives from, by reference counts only.
+                    "restricted_publication": restricted,
+                    **await self._request_attribution(db, state),
+                },
             )
             await work_service.notify_permission_holders(
                 db,
@@ -940,6 +947,15 @@ class AgentRuntime:
         return await is_restricted_publication(
             db, run.organization_id, binding.handler, run.sources, run.sources_truncated
         )
+
+    async def _request_attribution(self, db: AsyncSession, state: _RunState) -> dict[str, Any]:
+        """`source_counts` and `sources_truncated` for an approval request (M9.7)."""
+        run = state.run
+        self._save_provenance(state)
+        attribution = await publication_attribution(
+            db, run.organization_id, run.sources, run.sources_truncated
+        )
+        return {k: attribution[k] for k in ("source_counts", "sources_truncated")}
 
     async def _store_tool_result(
         self,

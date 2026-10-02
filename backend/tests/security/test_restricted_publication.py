@@ -1387,3 +1387,138 @@ async def test_an_approver_who_loses_the_permission_cannot_decide(
     assert refused.status_code == 403, refused.text
     assert secret not in refused.text
     assert await _tasks(session_factory, secret) == []
+
+
+# --------------------------------------------------------------------------- #
+# M9.7: audit attribution and refusals, never content
+# --------------------------------------------------------------------------- #
+async def _org_audit(session_factory, org: str) -> list[AuditLog]:
+    async with session_factory() as s:
+        rows = await s.execute(select(AuditLog).where(AuditLog.organization_id == uuid.UUID(org)))
+        return list(rows.scalars())
+
+
+def _no_content(rows: list[AuditLog], *values: str) -> None:
+    dumped = json.dumps([[r.action, r.metadata_json] for r in rows], default=str)
+    for value in values:
+        assert value not in dumped
+
+
+async def test_a_refused_agent_decision_is_audited_and_a_later_one_still_decides(
+    client, env, provider, session_factory
+):
+    team = await _team(client, session_factory, "m97-agent")
+    await _enable(client, team["owner"])
+    secret = _canary("secret")
+    result = await _agent_publication(client, provider, team, "alice", secret)
+    approval_id = _gated(result)
+    [requested] = await _audit(session_factory, "agent.approval_requested", approval_id)
+    assert requested.metadata_json["restricted_publication"] is True
+    assert requested.metadata_json["sources_truncated"] is False
+
+    refused = await _approve(client, team["mia"], approval_id)
+    assert refused.status_code == 403, refused.text
+    [refusal] = await _audit(session_factory, "agent.approval_decision_refused", approval_id)
+    assert refusal.user_id == _uid(team["mia"])
+    assert refusal.metadata_json == {
+        "reason": "not_eligible",
+        "tool": "create_task",
+        "run_id": result["run_id"],
+        "restricted_publication": True,
+    }
+    [approval] = await _approvals(session_factory, result["run_id"])
+    assert approval.status == "PENDING"
+    assert await _audit(session_factory, "agent.approval_decided", approval_id) == []
+
+    # Granted later, the same approver decides; nothing records a second decision.
+    await _participant(session_factory, result["conversation_id"], team["mia"], add=True)
+    note = _canary("note")
+    provider.queue(text("Created."))
+    approved = await client.post(
+        f"/api/v1/approvals/{approval_id}/approve", headers=_h(team["mia"]), json={"note": note}
+    )
+    assert approved.status_code == 200, approved.text
+    [decided] = await _audit(session_factory, "agent.approval_decided", approval_id)
+    assert decided.metadata_json["restricted_publication"] is True
+    assert decided.metadata_json["restricted"] is True
+    assert len(await _audit(session_factory, "agent.approval_decision_refused", approval_id)) == 1
+    assert len(await _tasks(session_factory, secret)) == 1
+    _no_content(await _org_audit(session_factory, team["org"]), secret, note)
+
+
+async def test_a_refused_workflow_decision_is_audited_and_a_later_one_still_decides(
+    client, env, runtime, session_factory
+):
+    team = await _team(client, session_factory, "m97-wf")
+    await _enable(client, team["owner"])
+    doc = await _restricted_doc(session_factory, client, team, readers=["alice"])
+    workflow_id = await _workflow(client, team["owner"])
+    secret = _canary("secret")
+    run_id = await _to_publication(
+        client, session_factory, runtime, team, workflow_id, secret, [_doc_ref(doc)]
+    )
+    await _waiting(client, team, run_id)
+
+    refused = await client.post(f"/api/v1/workflow-runs/{run_id}/approve", headers=_h(team["max"]))
+    assert refused.status_code == 403, refused.text
+    [refusal] = await _audit(session_factory, "workflow.approval_decision_refused", run_id)
+    assert refusal.user_id == _uid(team["max"])
+    assert refusal.metadata_json == {
+        "step": "log",
+        "reason": "not_eligible",
+        "restricted_publication": True,
+    }
+    assert (await _run(client, team["alice"], run_id))["status"] == "WAITING"
+
+    readers = [team["alice"]["user"]["id"], team["max"]["user"]["id"]]
+    await _grant(client, team["owner"], doc, readers)
+    approved = await client.post(f"/api/v1/workflow-runs/{run_id}/approve", headers=_h(team["max"]))
+    assert approved.status_code == 200, approved.text
+    await _drain(session_factory, runtime)
+    decided = [
+        r
+        for r in await _audit(session_factory, "workflow.approval_decided", run_id)
+        if r.metadata_json.get("step") == "log"
+    ]
+    assert len(decided) == 1
+    assert decided[0].metadata_json["restricted_publication"] is True
+    assert decided[0].metadata_json["restricted"] is True
+    assert len(await _tasks(session_factory, secret)) == 1
+    _no_content(await _org_audit(session_factory, team["org"]), secret)
+
+
+async def test_unrestricted_requests_are_attributed_as_such(
+    client, env, provider, runtime, session_factory
+):
+    # Agent, setting off: an approval the tool always required, not a restricted
+    # publication; its sources are still counted.
+    team = await _team(client, session_factory, "m97-open")
+    args = {"recipient_email": "max-m97-open@acme.example.com", "title": "x"}
+    provider.queue(calls(("notify_member", args)))
+    result = await _execute(client, team["alice"], team["agent_id"])
+    approval_id = _gated(result)
+    [requested] = await _audit(session_factory, "agent.approval_requested", approval_id)
+    assert requested.metadata_json["restricted_publication"] is False
+    assert requested.metadata_json["source_counts"] == {"conversation": 1}
+
+    # Workflow, setting on: a step that requires approval and consumes only
+    # organization-readable sources is not a restricted publication.
+    await _enable(client, team["owner"])
+    handbook = await _document(session_factory, team["org"], "Handbook", restricted=False)
+    workflow_id = await _workflow(client, team["owner"], require_approval=True)
+    secret = _canary("secret")
+    run_id = await _to_publication(
+        client, session_factory, runtime, team, workflow_id, secret, [_doc_ref(handbook)]
+    )
+    body = await _waiting(client, team, run_id)
+    assert _step(body, "log")["restricted_publication"] is False
+    assert await _audit(session_factory, "workflow.approval_requested", run_id) == []
+    ok = await client.post(f"/api/v1/workflow-runs/{run_id}/approve", headers=_h(team["max"]))
+    assert ok.status_code == 200, ok.text
+    [decided] = [
+        r
+        for r in await _audit(session_factory, "workflow.approval_decided", run_id)
+        if r.metadata_json.get("step") == "log"
+    ]
+    assert decided.metadata_json["restricted_publication"] is False
+    assert decided.metadata_json["restricted"] is False

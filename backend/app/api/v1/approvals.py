@@ -18,7 +18,9 @@ from app.api.deps import TenantContext, require_permission
 from app.api.v1.ai import translate_ai_error
 from app.core.exceptions import PermissionDeniedError, ValidationError
 from app.db.session import get_db
+from app.models.approval import Approval
 from app.models.organization import Organization
+from app.models.run import AgentRun
 from app.models.tool import Tool
 from app.rbac.permissions import Permission
 from app.rbac.visibility import (
@@ -26,6 +28,7 @@ from app.rbac.visibility import (
     eligible_for_restricted,
     present_approvals,
     present_execution,
+    publication_attribution,
 )
 from app.schemas.approval import (
     ApprovalDecisionIn,
@@ -74,11 +77,40 @@ async def _enforce_eligibility(
         return
     [(sources, truncated)] = (await approval_provenance(db, [approval])).values()
     if not await eligible_for_restricted(db, ctx.viewer, ctx.organization_id, sources, truncated):
+        # Audited, and kept although the request fails (M9.7): the request, the
+        # approver and the reason, never which source.
+        await record_audit(
+            db,
+            action="agent.approval_decision_refused",
+            user_id=ctx.user.id,
+            organization_id=ctx.organization_id,
+            target_type="approval",
+            target_id=str(approval.id),
+            metadata={
+                "reason": "not_eligible",
+                "tool": approval.tool_name,
+                "run_id": str(approval.run_id) if approval.run_id else None,
+                "restricted_publication": True,
+            },
+        )
+        await db.commit()
         raise PermissionDeniedError(
             "You can't decide this request: it publishes content derived from sources "
             "you can't currently read.",
             error_code="not_eligible",
         )
+
+
+async def _restricted_now(db: AsyncSession, approval: Approval) -> bool:
+    """ADR-0037 `restricted` for the paused run's provenance, evaluated now. A
+    request without its run has unknown provenance, which is restricted."""
+    run = await db.get(AgentRun, approval.run_id) if approval.run_id else None
+    if run is None or run.organization_id != approval.organization_id:
+        return True
+    attribution = await publication_attribution(
+        db, approval.organization_id, run.sources, run.sources_truncated
+    )
+    return bool(attribution["restricted"])
 
 
 async def _enforce_separation_of_duties(
@@ -133,6 +165,10 @@ async def _decide(
             "decision": approval.status,
             "modified": modified_payload is not None,
             "tool": approval.tool_name,
+            # M9.7: whether this gated a restricted publication, and whether its
+            # provenance is restricted now (the decision-time evaluation).
+            "restricted_publication": approval.restricted_publication,
+            "restricted": await _restricted_now(db, approval),
         },
     )
     execution = None

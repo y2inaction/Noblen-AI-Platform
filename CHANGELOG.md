@@ -29,6 +29,13 @@ and the project uses Conventional Commits.
   again at the decision; anyone else gets 403 `not_eligible`. The API withholds
   its arguments from other approvers (`payload_withheld` on approvals; the step's
   request on workflow runs), so they see only that it exists.
+- **Audit (M9.7):** `agent.approval_requested` adds `restricted_publication`,
+  `source_counts` and `sources_truncated`; a new `workflow.approval_requested`
+  records restricted workflow steps the same way; `agent.approval_decided` and
+  `workflow.approval_decided` add `restricted_publication` and the decision-time
+  `restricted`. A refused decision is recorded as `agent.` or
+  `workflow.approval_decision_refused` with `reason: not_eligible`, and the request
+  stays pending. Audit entries carry references and counts only, never content.
 
 ### Milestone 8 — Permission propagation & provenance (ADR-0037)
 - **Run content now follows its sources** (**behavior change**). Agent and workflow
